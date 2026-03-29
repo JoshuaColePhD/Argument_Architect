@@ -1,0 +1,1696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Argument Architect | Deep Space Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:ital,wght@0,300;0,600;1,400&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --space-black: #020617;
+            --nebula-purple: #7c3aed;
+            --plasma-cyan: #22d3ee;
+            --laser-red: #ef4444;
+            --warning-orange: #f97316;
+            --glass: rgba(15, 23, 42, 0.7);
+            --panel-border: rgba(34, 211, 238, 0.2);
+        }
+
+        body {
+            font-family: 'Exo 2', sans-serif;
+            background-color: var(--space-black);
+            color: #e2e8f0;
+            overflow-x: hidden;
+            user-select: none;
+        }
+
+        .orbitron { font-family: 'Orbitron', sans-serif; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .score-readout {
+            font-family: 'JetBrains Mono', monospace;
+            font-variant-numeric: tabular-nums lining-nums;
+            letter-spacing: -0.06em;
+            text-shadow: 0 0 14px rgba(255, 255, 255, 0.1);
+        }
+
+        /* Complex Animated Starfield & Grid */
+        #environment {
+            position: fixed;
+            inset: 0;
+            z-index: -2;
+            background: radial-gradient(ellipse at center, #0B1021 0%, #020617 100%);
+        }
+        
+        .grid-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            background-image: 
+                linear-gradient(to right, rgba(34, 211, 238, 0.05) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(34, 211, 238, 0.05) 1px, transparent 1px);
+            background-size: 50px 50px;
+            transform: perspective(500px) rotateX(60deg) translateY(-100px) translateZ(-200px);
+            animation: gridMove 20s linear infinite;
+        }
+
+        @keyframes gridMove {
+            0% { transform: perspective(500px) rotateX(60deg) translateY(0) translateZ(-200px); }
+            100% { transform: perspective(500px) rotateX(60deg) translateY(50px) translateZ(-200px); }
+        }
+
+        .star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            animation: twinkle var(--duration) infinite ease-in-out, drift var(--drift-dur) linear infinite;
+        }
+
+        @keyframes twinkle { 0%, 100% { opacity: 0.1; } 50% { opacity: 0.8; box-shadow: 0 0 5px white; } }
+        @keyframes drift { from { transform: translateY(0); } to { transform: translateY(100vh); } }
+
+        /* UI Elements */
+        .panel {
+            background: var(--glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--panel-border);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6), inset 0 0 20px rgba(34, 211, 238, 0.05);
+            border-radius: 1rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .panel::before {
+            content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--plasma-cyan), transparent);
+            opacity: 0.5;
+        }
+
+        .btn-sci-fi {
+            background: rgba(34, 211, 238, 0.1);
+            border: 1px solid var(--plasma-cyan);
+            color: var(--plasma-cyan);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-sci-fi:hover {
+            background: var(--plasma-cyan);
+            color: var(--space-black);
+            box-shadow: 0 0 15px var(--plasma-cyan);
+        }
+        
+        /* Specific Tag Colors */
+        .tag-history { color: #fbbf24; border-color: rgba(251, 191, 36, 0.3); background: rgba(251, 191, 36, 0.1); }
+        .tag-science { color: #38bdf8; border-color: rgba(56, 189, 248, 0.3); background: rgba(56, 189, 248, 0.1); }
+        .tag-culture { color: #f472b6; border-color: rgba(244, 114, 182, 0.3); background: rgba(244, 114, 182, 0.1); }
+        .tag-gov { color: #a3e635; border-color: rgba(163, 230, 53, 0.3); background: rgba(163, 230, 53, 0.1); }
+
+        /* Game Mechanics */
+        .selectable-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+        .selectable-card:hover { transform: translateY(-2px) scale(1.02); border-color: var(--plasma-cyan); }
+        .selectable-card.selected {
+            border-color: var(--nebula-purple);
+            background: rgba(124, 58, 237, 0.2);
+            box-shadow: 0 0 20px rgba(124, 58, 237, 0.4);
+        }
+        .selectable-card.disabled { opacity: 0.3; pointer-events: none; filter: grayscale(100%); }
+
+        .docking-bay {
+            border: 2px dashed rgba(255,255,255,0.2);
+            transition: all 0.3s;
+        }
+        .docking-bay.filled {
+            border-style: solid; border-color: var(--plasma-cyan);
+            background: radial-gradient(circle at center, rgba(34, 211, 238, 0.1) 0%, transparent 70%);
+        }
+
+        .tier-card {
+            border-left: 4px solid transparent;
+        }
+        .tier-card.selected {
+            border-left-color: var(--warning-orange);
+            background: rgba(249, 115, 22, 0.12);
+            box-shadow: 0 0 22px rgba(249, 115, 22, 0.15);
+        }
+        .tier-core { border-color: rgba(34, 211, 238, 0.3); }
+        .tier-advanced { border-color: rgba(168, 85, 247, 0.3); }
+        .tier-master { border-color: rgba(251, 191, 36, 0.35); }
+
+        .builder-card {
+            cursor: pointer;
+            transition: all 0.25s ease;
+        }
+        .builder-card:hover { border-color: var(--plasma-cyan); transform: translateY(-1px); }
+        .builder-card.selected {
+            border-color: var(--warning-orange);
+            background: rgba(249, 115, 22, 0.12);
+            box-shadow: 0 0 20px rgba(249, 115, 22, 0.18);
+        }
+
+        .terminal-flash {
+            animation: terminalFlash 0.9s ease-out;
+        }
+
+        .terminal-active {
+            background: rgba(34, 211, 238, 0.14);
+            box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.35), 0 0 18px rgba(34, 211, 238, 0.12);
+            border-radius: 0.5rem;
+            padding: 0.45rem;
+        }
+
+        @keyframes terminalFlash {
+            0% {
+                background: rgba(34, 211, 238, 0.22);
+                box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.55), 0 0 18px rgba(34, 211, 238, 0.22);
+            }
+            100% {
+                background: transparent;
+                box-shadow: none;
+            }
+        }
+
+        /* Arcade Specific */
+        #arcade-canvas {
+            display: block;
+            margin: 0 auto;
+            background: #000;
+            border: 2px solid var(--laser-red);
+            border-radius: 8px;
+            box-shadow: 0 0 30px rgba(239, 68, 68, 0.3), inset 0 0 20px rgba(239, 68, 68, 0.2);
+            cursor: crosshair;
+        }
+
+        /* Animations */
+        .scan-line {
+            position: absolute; width: 100%; height: 2px; background: rgba(34, 211, 238, 0.8);
+            box-shadow: 0 0 10px var(--plasma-cyan); top: 0; left: 0;
+            animation: scan 2s linear infinite; z-index: 10; pointer-events: none; display: none;
+        }
+        @keyframes scan { 0% { top: 0; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+        
+        .hyperspace {
+            animation: hyperspaceJump 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+        @keyframes hyperspaceJump {
+            0% { filter: blur(0px); transform: scale(1); opacity: 1; }
+            50% { filter: blur(20px); transform: scale(1.5) translateZ(100px); opacity: 0; }
+            100% { filter: blur(0px); transform: scale(1); opacity: 1; }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+        ::-webkit-scrollbar-thumb { background: var(--plasma-cyan); border-radius: 10px; }
+
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <div id="environment">
+        <div class="grid-overlay"></div>
+    </div>
+
+    <nav class="fixed top-0 w-full z-50 p-4 border-b border-cyan-500/20 bg-slate-950/80 backdrop-blur-md flex justify-between items-center">
+        <div class="flex items-center gap-4">
+            <div class="w-10 h-10 rounded-full border border-cyan-400 flex items-center justify-center bg-cyan-950 shadow-[0_0_15px_rgba(34,211,238,0.4)]">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="text-cyan-400">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
+            </div>
+            <div>
+                <h1 class="orbitron text-lg font-black tracking-tighter text-white">ARGUMENT ARCHITECT <span class="text-cyan-400">V.10</span></h1>
+                <p id="mission-status-text" class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Awaiting Prompt Selection...</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-6">
+            <div class="hidden md:flex flex-col items-end">
+                <span class="orbitron text-[8px] text-cyan-400 uppercase tracking-widest mb-1">Mission Progress</span>
+                <div class="w-56 h-2 bg-slate-800 rounded-full overflow-hidden border border-white/10 relative">
+                    <div id="integrity-bar" class="h-full bg-gradient-to-r from-purple-500 via-cyan-400 to-white w-0 transition-all duration-1000"></div>
+                </div>
+            </div>
+            <div class="text-right">
+                <div class="orbitron text-[8px] text-cyan-400 uppercase tracking-widest">Score</div>
+                <div id="score-total" class="score-readout text-3xl text-white font-bold leading-none">0</div>
+            </div>
+            <button onclick="location.reload()" class="btn-sci-fi p-2 rounded hover:text-white" title="Restart Mission">
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </button>
+        </div>
+    </nav>
+
+    <main id="game-container" class="flex-grow pt-24 pb-12 px-6 max-w-7xl mx-auto w-full relative">
+        <section id="phase-prompt" class="phase-section space-y-8">
+            <div class="text-center space-y-2 mb-12">
+                <h2 class="orbitron text-4xl font-black text-white">SELECT <span class="text-cyan-400">SECTOR</span></h2>
+                <p class="text-slate-400">Choose the prompt for your argumentative essay mission.</p>
+            </div>
+            <div class="grid md:grid-cols-2 gap-6" id="prompt-grid"></div>
+        </section>
+
+        <section id="phase-choice" class="phase-section hidden space-y-8">
+            <div class="panel p-6 border-l-4 border-cyan-400 mb-6">
+                <h3 class="orbitron text-xs text-cyan-400 font-bold uppercase tracking-widest mb-2">Current Mission Data</h3>
+                <p id="current-prompt-text" class="text-xl font-light italic leading-relaxed text-slate-200"></p>
+            </div>
+
+            <div class="grid xl:grid-cols-[minmax(0,1.1fr)_360px] gap-8 items-start">
+                <div>
+                    <div class="mb-6">
+                        <h2 id="choice-title" class="orbitron text-3xl font-black text-white"></h2>
+                        <p id="choice-subtitle" class="text-slate-400 text-sm mt-2"></p>
+                    </div>
+                    <div class="space-y-4" id="choice-list"></div>
+                </div>
+
+                <div class="space-y-6 xl:sticky xl:top-28">
+                    <div class="panel p-6 bg-slate-900/60">
+                        <h3 class="orbitron text-sm font-bold text-cyan-400 uppercase tracking-widest mb-4">Stage Manager</h3>
+                        <div class="space-y-4 text-sm text-slate-300">
+                            <div>
+                                <p class="orbitron text-[10px] text-slate-500 uppercase tracking-[0.2em]">Current Task</p>
+                                <p id="task-label" class="text-white text-lg mt-1">Awaiting selection</p>
+                            </div>
+                            <div>
+                                <p class="orbitron text-[10px] text-slate-500 uppercase tracking-[0.2em]">Paragraph Focus</p>
+                                <p id="paragraph-label" class="text-cyan-300 text-lg mt-1">Claim setup</p>
+                            </div>
+                            <div>
+                                <p class="orbitron text-[10px] text-slate-500 uppercase tracking-[0.2em]">Coaching</p>
+                                <p id="choice-coach" class="leading-relaxed">Choose the most sophisticated option, not the first one that sounds okay.</p>
+                            </div>
+                            <div>
+                                <p class="orbitron text-[10px] text-slate-500 uppercase tracking-[0.2em]">Unlocked Hint</p>
+                                <p id="choice-hint" class="leading-relaxed text-amber-200">No arcade hint unlocked yet.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel bg-slate-950/92 border-cyan-500/20 overflow-hidden">
+                        <div class="px-4 py-3 border-b border-cyan-500/20 bg-slate-950/98">
+                            <p class="orbitron text-[10px] text-cyan-400 uppercase tracking-[0.2em]">Draft Builder</p>
+                            <p id="live-draft-status" class="orbitron text-[10px] text-amber-200 uppercase tracking-[0.2em] mt-2">Waiting for first selection</p>
+                        </div>
+                        <div class="p-4 space-y-4">
+                            <div>
+                                <p class="orbitron text-[10px] text-slate-500 uppercase tracking-[0.2em] mb-2">Overall Claim</p>
+                                <div id="live-claim-output" class="mono text-xs md:text-sm text-cyan-100 leading-relaxed min-h-[76px] max-h-28 overflow-y-auto pr-1">No claim selected yet.</div>
+                            </div>
+                            <div>
+                                <p class="orbitron text-[10px] text-slate-500 uppercase tracking-[0.2em] mb-2">Body Paragraph 1</p>
+                                <div id="live-paragraph-one" class="mono text-xs md:text-sm text-slate-200 leading-relaxed min-h-[120px] max-h-40 overflow-y-auto pr-1">Awaiting paragraph construction.</div>
+                            </div>
+                            <div>
+                                <p class="orbitron text-[10px] text-slate-500 uppercase tracking-[0.2em] mb-2">Body Paragraph 2</p>
+                                <div id="live-paragraph-two" class="mono text-xs md:text-sm text-slate-200 leading-relaxed min-h-[120px] max-h-40 overflow-y-auto pr-1">Awaiting paragraph construction.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="choice-feedback-overlay" class="hidden fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-sm px-6">
+                <div class="max-w-xl mx-auto mt-32 panel p-6 bg-slate-950/95 border-cyan-500/30">
+                    <p class="orbitron text-[10px] text-cyan-400 uppercase tracking-[0.2em] mb-2">Choice Feedback</p>
+                    <h3 id="choice-feedback-title" class="orbitron text-2xl text-white font-black mb-3">Selection Logged</h3>
+                    <p id="choice-feedback-text" class="text-slate-200 leading-relaxed mb-5">Feedback will appear here.</p>
+                    <div class="flex justify-end">
+                        <button id="choice-feedback-continue" class="btn-sci-fi px-5 py-2 rounded text-xs orbitron font-bold">Continue Mission</button>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <section id="phase-arcade" class="phase-section hidden space-y-6">
+            <div class="text-center mb-3">
+                <h2 class="orbitron text-3xl font-black text-red-500">RETRO <span class="text-white">STAGE MANAGER</span></h2>
+                <p id="arcade-intro" class="text-slate-400 text-sm mt-2">Play the intermission game, earn a small bonus, then return to the writing mission.</p>
+            </div>
+
+            <div class="grid lg:grid-cols-[1.2fr_0.8fr] gap-6 items-start">
+                <div class="panel p-2 bg-slate-900/80 relative">
+                    <div class="absolute top-4 left-6 z-10">
+                        <p class="orbitron text-xs text-cyan-400 font-bold tracking-widest">OBJECTIVE: <span id="arcade-objective" class="text-white text-lg">Hit 5 targets</span></p>
+                    </div>
+                    <div class="absolute top-4 right-6 z-10 text-right">
+                        <p class="orbitron text-xs text-purple-400 font-bold tracking-widest">BONUS: <span id="arcade-bonus" class="text-white">0</span></p>
+                    </div>
+                    <canvas id="arcade-canvas" width="860" height="420" class="w-full h-auto"></canvas>
+                    <div id="arcade-overlay" class="absolute inset-0 bg-slate-950/85 backdrop-blur-sm flex flex-col items-center justify-center z-20">
+                        <h2 id="arcade-title" class="orbitron text-4xl font-black text-white mb-2">INTERMISSION</h2>
+                        <p id="arcade-instruction" class="text-cyan-300 orbitron text-center max-w-md">Play to earn a small score bonus and reset before the next writing choice.</p>
+                        <button id="arcade-start-btn" class="btn-sci-fi py-3 px-8 orbitron font-bold rounded text-sm mt-6">START INTERMISSION</button>
+                    </div>
+                    <div class="border-t border-cyan-500/20 bg-slate-950/90 px-5 py-3">
+                        <p class="orbitron text-[10px] text-slate-500 uppercase tracking-[0.2em]">Quick Instructions</p>
+                        <p id="arcade-brief" class="text-cyan-200 text-sm mt-1 leading-relaxed">Use the controls shown for this game, earn a small bonus, then return to the writing mission.</p>
+                    </div>
+                </div>
+
+                <div class="panel p-6 bg-slate-900/60">
+                    <h3 class="orbitron text-sm font-bold text-cyan-400 uppercase tracking-widest mb-4">Arcade Console</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <p class="orbitron text-[10px] text-slate-500 uppercase tracking-[0.2em]">Mode</p>
+                            <p id="arcade-mode" class="text-white text-lg mt-1">Shooter</p>
+                        </div>
+                        <div>
+                            <p class="orbitron text-[10px] text-slate-500 uppercase tracking-[0.2em]">Time</p>
+                            <p id="arcade-timer" class="text-cyan-300 text-lg mt-1">10</p>
+                        </div>
+                        <div>
+                            <p class="orbitron text-[10px] text-slate-500 uppercase tracking-[0.2em]">Intermission Bonus</p>
+                            <p id="arcade-score" class="text-purple-300 text-lg mt-1">0</p>
+                        </div>
+                        <div>
+                            <p class="orbitron text-[10px] text-slate-500 uppercase tracking-[0.2em]">Mission Tip</p>
+                            <p id="arcade-tip" class="text-slate-300 text-sm leading-relaxed">The arcade game is a stage manager. Most of the score still comes from the sophistication of your writing choices.</p>
+                        </div>
+                        <div>
+                            <p class="orbitron text-[10px] text-slate-500 uppercase tracking-[0.2em]">Hint Reward</p>
+                            <p id="arcade-hint-rule" class="text-amber-200 text-sm leading-relaxed">A strong arcade run can unlock a hint for the next writing choice.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="phase-debrief" class="phase-section hidden space-y-8">
+            <div class="panel p-10 text-center relative overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-b from-cyan-500/10 to-transparent"></div>
+                <h2 class="orbitron text-5xl font-black text-white mb-2 relative z-10">MISSION <span class="text-cyan-400">DEBRIEF</span></h2>
+                <div class="inline-flex flex-col items-center justify-center p-6 border-2 border-cyan-400 rounded-full w-52 h-52 mx-auto mt-6 mb-4 shadow-[0_0_30px_rgba(34,211,238,0.3)] relative z-10">
+                    <span class="orbitron text-sm text-slate-400 uppercase">Final Score</span>
+                    <span class="score-readout text-7xl text-white font-bold leading-none" id="final-score">0</span>
+                    <span class="text-cyan-400 text-sm font-bold mt-1" id="final-rank">Evaluating...</span>
+                </div>
+                <p id="score-feedback" class="text-slate-300 max-w-2xl mx-auto italic relative z-10"></p>
+            </div>
+
+            <div class="grid lg:grid-cols-2 gap-6">
+                <div class="panel p-8">
+                    <h3 class="orbitron text-xl text-cyan-400 font-bold uppercase tracking-widest mb-6">Body Paragraph One</h3>
+                    <div id="paragraph-one-output" class="mono text-base text-slate-200 leading-relaxed space-y-4 p-5 bg-slate-950/50 rounded border border-white/5"></div>
+                </div>
+                <div class="panel p-8">
+                    <h3 class="orbitron text-xl text-cyan-400 font-bold uppercase tracking-widest mb-6">Body Paragraph Two</h3>
+                    <div id="paragraph-two-output" class="mono text-base text-slate-200 leading-relaxed space-y-4 p-5 bg-slate-950/50 rounded border border-white/5"></div>
+                </div>
+            </div>
+
+            <div class="panel p-8">
+                <div class="flex justify-between items-center mb-4 gap-4 flex-wrap">
+                    <h3 class="orbitron text-xl text-cyan-400 font-bold uppercase tracking-widest">Full Essay Draft</h3>
+                    <button onclick="copyEssay()" class="btn-sci-fi text-xs px-4 py-2 rounded flex items-center gap-2">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+                        COPY WHOLE ESSAY
+                    </button>
+                </div>
+                <textarea id="essay-output" readonly class="w-full min-h-[240px] mono text-sm text-slate-200 leading-relaxed p-5 bg-slate-950/60 rounded border border-white/10 resize-y focus:outline-none focus:border-cyan-400"></textarea>
+            </div>
+
+            <div class="panel p-8">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="orbitron text-xl text-cyan-400 font-bold uppercase tracking-widest">Score Breakdown</h3>
+                    <span class="orbitron text-[10px] text-slate-500 uppercase tracking-[0.2em]">Review why each choice scored the way it did</span>
+                </div>
+                <div id="breakdown-output" class="mono text-sm text-slate-300 leading-relaxed space-y-2"></div>
+            </div>
+        </section>
+    </main>
+
+    <div id="toast" class="fixed bottom-10 right-10 panel px-6 py-4 border-cyan-500 text-cyan-400 orbitron text-xs font-bold opacity-0 transition-all pointer-events-none translate-y-4 z-50">
+        ESSAY COPIED TO CLIPBOARD
+    </div>
+
+    <script>
+        const GAME_DATA = {
+            prompts: [
+                {
+                    id: 'p1',
+                    title: 'Adversity & Talent',
+                    cat: 'Personal Evolution',
+                    text: "Roman poet Horace claimed that adversity elicits talents that prosperity leaves dormant.",
+                    claimOptions: [
+                        { id: 'p1_c1', text: "Adversity can reveal talent, but only when people still have enough support to respond productively.", points: 20, quality: 'Sophisticated', feedback: 'This is the strongest claim because it is nuanced, defensible, and gives both body paragraphs a clear line of reasoning.' },
+                        { id: 'p1_c2', text: "Adversity often pushes people to develop abilities they might not have discovered in easier circumstances.", points: 12, quality: 'Acceptable', feedback: 'This is arguable and relevant, but it is less nuanced because it does not account for the conditions that make adversity productive.' },
+                        { id: 'p1_c3', text: "Adversity can shape a person’s growth by forcing difficult forms of adaptation.", points: 9, quality: 'Developing', feedback: 'This is defensible, but it stays general and does not yet pinpoint the larger idea the essay could build around.' },
+                        { id: 'p1_c4', text: "Adversity matters most because difficult experiences often reveal what people are capable of becoming.", points: 14, quality: 'Strong', feedback: 'This has an arguable direction, but it still needs the stronger claim’s qualification about support and productive response.' }
+                    ],
+                    paragraphs: [
+                        {
+                            title: 'Body Paragraph One',
+                            focus: 'Explain the conditions under which adversity can produce growth.',
+                            topicOptions: [
+                                { id: 'p1_p1_t1', text: 'Adversity becomes productive only when a person has enough structure to transform pressure into action.', points: 20, quality: 'Sophisticated', feedback: 'Best choice: arguable, precise, and clearly connected to the claim.' },
+                                { id: 'p1_p1_t2', text: 'Adversity is most likely to develop talent when people have some framework for turning struggle into discipline.', points: 16, quality: 'Strong', feedback: 'This is close to the strongest option, but it is slightly less precise and forceful in how it frames the condition.' },
+                                { id: 'p1_p1_t3', text: 'Hardship can sometimes encourage people to grow in ways comfort does not.', points: 11, quality: 'Developing', feedback: 'This works in a general way, but it does not give the paragraph as sharp or specific a purpose.' }
+                            ],
+                            evidenceOptions: [
+                                { id: 'p1_p1_e1', text: 'Apollo 13 engineers created life-saving solutions under pressure, but only because they had training, teamwork, and resources already in place.', points: 25, quality: 'Sophisticated', feedback: 'Best evidence: specific and perfectly aligned with the claim’s emphasis on support plus adversity.' },
+                                { id: 'p1_p1_e2', text: 'Frederick Douglass taught himself to read while enslaved, showing how severe pressure can sharpen resolve when a person can still act on emerging ability.', points: 20, quality: 'Strong', feedback: 'This is still strong evidence, but it requires a little more explanation to connect fully to the paragraph’s emphasis on support and structure.' },
+                                { id: 'p1_p1_e3', text: 'First-generation college students often describe challenge as a force that pushes them to develop new habits and discipline.', points: 14, quality: 'Developing', feedback: 'This is relevant, but it is less vivid and concrete than the highest-scoring example.' },
+                                { id: 'p1_p1_e4', text: 'Athletes frequently argue that demanding training reveals abilities they did not know they had.', points: 12, quality: 'Developing', feedback: 'This connects conceptually, but it feels more illustrative than fully persuasive as proof.' }
+                            ],
+                            commentary1Options: [
+                                { id: 'p1_p1_m1', text: 'The example matters because the crisis alone did not create talent; rather, it activated skills that could only function because a support structure already existed.', points: 15, quality: 'Sophisticated', feedback: 'Best move: it explains why the evidence proves the argument instead of repeating the event.' },
+                                { id: 'p1_p1_m2', text: 'This example suggests that pressure is productive less because struggle is magical and more because it forces prepared people to use skills with urgency.', points: 12, quality: 'Strong', feedback: 'This is thoughtful commentary, but it is slightly less precise than the strongest option about the role of support.' },
+                                { id: 'p1_p1_m3', text: 'This shows that difficult moments can draw out ability when people have some way to respond effectively.', points: 9, quality: 'Developing', feedback: 'This moves beyond summary, but it stays broader and less analytical than the top commentary choice.' }
+                            ],
+                            commentary2Options: [
+                                { id: 'p1_p1_n1', text: 'As a result, the stronger lesson is that pressure reveals ability only when a person is positioned to convert struggle into problem-solving.', points: 15, quality: 'Sophisticated', feedback: 'Strong follow-up commentary that pushes from evidence to general principle.' },
+                                { id: 'p1_p1_n2', text: 'Therefore, adversity becomes meaningful in an argument only when the writer explains why the challenge led to action rather than paralysis.', points: 12, quality: 'Strong', feedback: 'This is solid reasoning, but it is a little more abstract and less elegant than the strongest inference.' },
+                                { id: 'p1_p1_n3', text: 'This helps explain why stories of success under pressure are really stories about response, not pressure alone.', points: 10, quality: 'Developing', feedback: 'This is relevant and analytical, but it does not sharpen the paragraph’s principle as effectively as the highest-point option.' }
+                            ],
+                            closingOptions: [
+                                { id: 'p1_p1_c1', text: 'Ultimately, this evidence strengthens the argument that hardship reveals talent only when support keeps hardship from becoming pure destruction.', points: 15, quality: 'Sophisticated', feedback: 'Best closing: it circles back to the claim with precision.' },
+                                { id: 'p1_p1_c2', text: 'Taken together, the example suggests that adversity reveals talent only when people have the resources to answer pressure with action.', points: 13, quality: 'Strong', feedback: 'This is a strong closing, but it is slightly less sharp and memorable than the top option.' },
+                                { id: 'p1_p1_c3', text: 'Ultimately, the paragraph shows that hardship can help reveal talent in the right conditions.', points: 10, quality: 'Developing', feedback: 'This conclusion works, but it is less precise and less rhetorically powerful than the strongest payoff.' }
+                            ]
+                        },
+                        {
+                            title: 'Body Paragraph Two',
+                            focus: 'Show why adversity can also fail when support is missing.',
+                            topicOptions: [
+                                { id: 'p1_p2_t1', text: 'When hardship overwhelms a person’s basic needs, it suppresses talent rather than drawing it out.', points: 20, quality: 'Sophisticated', feedback: 'Best topic sentence because it extends the claim through contrast and precision.' },
+                                { id: 'p1_p2_t2', text: 'Adversity can limit growth when the pressure becomes so constant that it drains the energy required for development.', points: 16, quality: 'Strong', feedback: 'This is a good argumentative sentence, but it is a little less concise and forceful than the strongest option.' },
+                                { id: 'p1_p2_t3', text: 'Hardship does not always produce growth, especially when people lack stability.', points: 12, quality: 'Developing', feedback: 'This is defensible and relevant, but it does not frame the idea with the same precision or sophistication.' }
+                            ],
+                            evidenceOptions: [
+                                { id: 'p1_p2_e1', text: 'Gifted students in under-resourced schools often burn out because constant stress erodes focus, opportunity, and confidence.', points: 25, quality: 'Sophisticated', feedback: 'Best evidence because it directly proves that adversity without support can shut potential down.' },
+                                { id: 'p1_p2_e2', text: 'Maslow’s hierarchy suggests higher achievement is difficult when safety and stability are never secure.', points: 20, quality: 'Strong', feedback: 'This is strong evidence, though it is more theoretical and slightly less vivid than the best option.' },
+                                { id: 'p1_p2_e3', text: 'Research on chronic stress often shows that long-term instability can damage attention, motivation, and memory.', points: 17, quality: 'Strong', feedback: 'This is relevant and persuasive, but it is less immediate and specific than the top-scoring example.' },
+                                { id: 'p1_p2_e4', text: 'Students under financial and emotional strain often have less energy to turn pressure into achievement.', points: 13, quality: 'Developing', feedback: 'This supports the point, but it reads more as a generalization than as especially compelling evidence.' }
+                            ],
+                            commentary1Options: [
+                                { id: 'p1_p2_m1', text: 'This evidence undercuts the simplistic version of Horace’s idea because unrelenting pressure often consumes the very energy that talent needs in order to develop.', points: 15, quality: 'Sophisticated', feedback: 'Best commentary because it directly explains how the evidence challenges a simplistic claim.' },
+                                { id: 'p1_p2_m2', text: 'This matters because hardship cannot reveal talent if it first strips away the attention, confidence, and security that talent depends on.', points: 13, quality: 'Strong', feedback: 'This is strong commentary, but it is a little less elegantly tied to the original claim than the top option.' },
+                                { id: 'p1_p2_m3', text: 'This suggests that pressure can become counterproductive when it overwhelms a person’s ability to respond.', points: 10, quality: 'Developing', feedback: 'This is analytical and relevant, but it does not interpret the evidence as fully or sharply as the strongest option.' }
+                            ],
+                            commentary2Options: [
+                                { id: 'p1_p2_n1', text: 'Therefore, the argument becomes more convincing when it acknowledges that support is the condition that separates productive challenge from destructive suffering.', points: 15, quality: 'Sophisticated', feedback: 'Strong because it returns to the claim with sharper reasoning.' },
+                                { id: 'p1_p2_n2', text: 'This helps explain why adversity should be evaluated by what it allows a person to do, not simply by how severe it is.', points: 12, quality: 'Strong', feedback: 'This is a meaningful inference, but it is not quite as sharp or synthesizing as the highest-point option.' },
+                                { id: 'p1_p2_n3', text: 'This clarifies that the real issue is whether challenge remains survivable enough to become instructive.', points: 10, quality: 'Developing', feedback: 'This adds reasoning, but it is slightly less direct and conclusive than the stronger alternatives.' }
+                            ],
+                            closingOptions: [
+                                { id: 'p1_p2_c1', text: 'Seen together, these examples prove that adversity is not automatically transformative; it becomes meaningful only when people have the support to survive and adapt.', points: 15, quality: 'Sophisticated', feedback: 'Best closing because it synthesizes the paragraph back into the main claim.' },
+                                { id: 'p1_p2_c2', text: 'Ultimately, the paragraph suggests that hardship reveals talent only when it does not first destroy the conditions that talent requires.', points: 13, quality: 'Strong', feedback: 'This is strong and connected, but it is slightly less polished than the best closing move.' },
+                                { id: 'p1_p2_c3', text: 'Overall, the example qualifies Horace’s idea by showing that some forms of pressure can block growth.', points: 10, quality: 'Developing', feedback: 'This works as a closing, but it does not synthesize the paragraph’s logic as fully as the strongest option.' }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    id: 'p2',
+                    title: 'Creative Disobedience',
+                    cat: 'Ethics & Progress',
+                    text: "Oscar Wilde claimed that progress is made through disobedience.",
+                    claimOptions: [
+                        { id: 'p2_c1', text: 'Disobedience advances society only when it is disciplined, principled, and connected to a moral purpose.', points: 20, quality: 'Sophisticated', feedback: 'Best claim because it is nuanced and sets up multiple defensible body paragraphs.' },
+                        { id: 'p2_c2', text: 'Disobedience often helps produce progress because unjust systems rarely change through obedience alone.', points: 14, quality: 'Strong', feedback: 'This is a defensible claim, but it is less nuanced because it does not distinguish principled resistance from reckless refusal.' },
+                        { id: 'p2_c3', text: 'Disobedience can become necessary when obedience protects a system that has lost moral legitimacy.', points: 16, quality: 'Strong', feedback: 'This is close to the best claim, but it sets up slightly less range for the qualifying second body paragraph.' },
+                        { id: 'p2_c4', text: 'Social progress often depends on people who are willing to challenge rules that preserve injustice.', points: 12, quality: 'Developing', feedback: 'This is relevant and arguable, but it stays more general and less conceptually precise than the highest-point option.' }
+                    ],
+                    paragraphs: [
+                        {
+                            title: 'Body Paragraph One',
+                            focus: 'Show how principled defiance can trigger justice.',
+                            topicOptions: [
+                                { id: 'p2_p1_t1', text: 'When disobedience exposes an unjust system, it can become the necessary first step toward reform.', points: 20, quality: 'Sophisticated', feedback: 'Best topic sentence because it is arguable and sharply aligned with the prompt.' },
+                                { id: 'p2_p1_t2', text: 'Principled disobedience can force a public to confront injustice it has learned to treat as normal.', points: 17, quality: 'Strong', feedback: 'This is a very good topic sentence, but it is slightly less direct than the strongest option in linking disobedience to reform.' },
+                                { id: 'p2_p1_t3', text: 'Acts of public defiance can become powerful when they expose the moral weakness of the rule being resisted.', points: 15, quality: 'Developing', feedback: 'This is plausible and purposeful, but it is a bit less crisp and immediate than the top choice.' }
+                            ],
+                            evidenceOptions: [
+                                { id: 'p2_p1_e1', text: 'Rosa Parks’ refusal to surrender her seat exposed the moral failure of segregation and helped trigger a larger movement.', points: 25, quality: 'Sophisticated', feedback: 'Best evidence because it directly supports principled disobedience leading toward reform.' },
+                                { id: 'p2_p1_e2', text: 'Galileo challenged Church doctrine and helped reshape scientific thinking by refusing to accept authority as a substitute for truth.', points: 19, quality: 'Strong', feedback: 'This is strong evidence, but it is a little less direct than Rosa Parks for a paragraph about public injustice and reform.' },
+                                { id: 'p2_p1_e3', text: 'Student sit-ins during the civil rights movement used orderly rule-breaking to reveal the hypocrisy of segregation.', points: 22, quality: 'Strong', feedback: 'This is very solid evidence and closely aligned, though the Rosa Parks example remains slightly more concise and iconic for the point.' },
+                                { id: 'p2_p1_e4', text: 'Whistleblowers often violate institutional expectations in order to expose harmful practices to the public.', points: 16, quality: 'Developing', feedback: 'This is relevant and arguable, but it is broader and less immediately developed than the best examples.' }
+                            ],
+                            commentary1Options: [
+                                { id: 'p2_p1_m1', text: 'This example matters because Parks’ action did more than break a rule; it revealed that obedience would have protected injustice.', points: 15, quality: 'Sophisticated', feedback: 'Best commentary because it explains why the evidence advances the argument.' },
+                                { id: 'p2_p1_m2', text: 'The force of the example comes from the fact that the refusal made the injustice of the system visible in a way ordinary obedience never could.', points: 13, quality: 'Strong', feedback: 'This is strong commentary, but it is a little less concise and purposeful than the top option.' },
+                                { id: 'p2_p1_m3', text: 'This suggests that disobedience becomes persuasive when it exposes the moral cost of following the rule.', points: 11, quality: 'Developing', feedback: 'This is relevant analysis, but it stays slightly more general than the strongest commentary move.' }
+                            ],
+                            commentary2Options: [
+                                { id: 'p2_p1_n1', text: 'As a result, the evidence suggests that morally focused defiance can force society to confront contradictions it would rather ignore.', points: 15, quality: 'Sophisticated', feedback: 'Strong second commentary move because it generalizes the significance.' },
+                                { id: 'p2_p1_n2', text: 'Therefore, progress begins when principled resistance changes the public meaning of obedience itself.', points: 13, quality: 'Strong', feedback: 'This is a strong inference, but it is a bit more abstract and less clearly rooted in the evidence than the best option.' },
+                                { id: 'p2_p1_n3', text: 'This helps explain why some acts of refusal matter less for the broken rule than for the larger injustice they expose.', points: 11, quality: 'Developing', feedback: 'This is thoughtful and analytical, but it does not land with quite the same force as the highest-point choice.' }
+                            ],
+                            closingOptions: [
+                                { id: 'p2_p1_c1', text: 'Ultimately, the evidence confirms that disobedience creates progress when it interrupts a system that deserves to be challenged.', points: 15, quality: 'Sophisticated', feedback: 'Best closing because it returns directly to the paragraph claim.' },
+                                { id: 'p2_p1_c2', text: 'Ultimately, the paragraph shows that rule-breaking can move society forward when it exposes a rule that no longer deserves obedience.', points: 13, quality: 'Strong', feedback: 'This is a strong closing, though the best option is slightly tighter and more forceful.' },
+                                { id: 'p2_p1_c3', text: 'Taken together, the example suggests that progress sometimes depends on resisting rules that preserve injustice.', points: 11, quality: 'Developing', feedback: 'This works as a payoff, but it is more general and less polished than the strongest ending.' }
+                            ]
+                        },
+                        {
+                            title: 'Body Paragraph Two',
+                            focus: 'Show why reckless defiance fails without principle.',
+                            topicOptions: [
+                                { id: 'p2_p2_t1', text: 'Disobedience stops serving progress when it loses moral discipline and collapses into reactionary chaos.', points: 20, quality: 'Sophisticated', feedback: 'Best topic sentence because it builds the qualifying half of the argument.' },
+                                { id: 'p2_p2_t2', text: 'Rebellion fails as a force for progress when it abandons the principles that once justified resistance.', points: 17, quality: 'Strong', feedback: 'This is very strong, but the highest-point option is slightly more precise and conceptually sharper.' },
+                                { id: 'p2_p2_t3', text: 'Disobedience can damage reform when the act of resisting becomes more important than the moral purpose behind it.', points: 14, quality: 'Developing', feedback: 'This is arguable and relevant, but it is a bit less crisp than the strongest topic sentence.' }
+                            ],
+                            evidenceOptions: [
+                                { id: 'p2_p2_e1', text: 'The Reign of Terror showed how rebellion can reproduce oppression when it abandons restraint and principle.', points: 25, quality: 'Sophisticated', feedback: 'Best evidence because it clearly shows why not all disobedience is progressive.' },
+                                { id: 'p2_p2_e2', text: 'Anti-vaccine resistance has fueled preventable outbreaks by rejecting evidence-based public health in the name of personal defiance.', points: 21, quality: 'Strong', feedback: 'This is strong and relevant evidence, though it is less historically sweeping and less directly tied to Wilde’s phrasing than the best option.' },
+                                { id: 'p2_p2_e3', text: 'Some revolutions replace one form of oppression with another when anger outruns any clear ethical purpose.', points: 17, quality: 'Strong', feedback: 'This supports the point well, but it is less concrete and historically anchored than the top evidence choice.' },
+                                { id: 'p2_p2_e4', text: 'Leaderless protest can sometimes splinter into destruction when no shared principle guides the movement.', points: 14, quality: 'Developing', feedback: 'This is relevant, but it is broader and less authoritative than the strongest evidence.' }
+                            ],
+                            commentary1Options: [
+                                { id: 'p2_p2_m1', text: 'This evidence matters because it separates principled resistance from destructive rebellion, proving that not every act of refusal deserves moral credit.', points: 15, quality: 'Sophisticated', feedback: 'Best commentary because it explains the difference the argument depends on.' },
+                                { id: 'p2_p2_m2', text: 'The example matters because resistance stops being progressive once it begins to imitate the coercion it originally opposed.', points: 13, quality: 'Strong', feedback: 'This is strong commentary, but it is slightly less explicit than the best option about moral credit and principled resistance.' },
+                                { id: 'p2_p2_m3', text: 'This suggests that rebellion becomes self-defeating when it loses the ethical restraint that made it defensible in the first place.', points: 11, quality: 'Developing', feedback: 'This is relevant analysis, but it is a little less precise and memorable than the strongest commentary.' }
+                            ],
+                            commentary2Options: [
+                                { id: 'p2_p2_n1', text: 'Therefore, the argument becomes stronger when it qualifies Wilde’s claim and insists that progress depends on ethical direction, not rebellion alone.', points: 15, quality: 'Sophisticated', feedback: 'Strong because it links the evidence back to the refined claim.' },
+                                { id: 'p2_p2_n2', text: 'Therefore, progress depends less on the fact of disobedience than on the values directing that disobedience.', points: 13, quality: 'Strong', feedback: 'This is a strong inference, though the best option connects back to Wilde’s claim a little more directly.' },
+                                { id: 'p2_p2_n3', text: 'This clarifies that rebellion by itself is morally incomplete unless it remains tied to a defensible purpose.', points: 11, quality: 'Developing', feedback: 'This is analytical and relevant, but it does not tie the reasoning back to the overall claim quite as sharply.' }
+                            ],
+                            closingOptions: [
+                                { id: 'p2_p2_c1', text: 'Seen together, these details show that disobedience becomes progressive only when principle and discipline guide it.', points: 15, quality: 'Sophisticated', feedback: 'Best closing because it completes the qualification.' },
+                                { id: 'p2_p2_c2', text: 'Ultimately, the paragraph suggests that rebellion only counts as progress when moral discipline shapes what the resistance becomes.', points: 13, quality: 'Strong', feedback: 'This is a strong closing, but the top option finishes the qualification with slightly more force and economy.' },
+                                { id: 'p2_p2_c3', text: 'Taken together, the evidence shows that disobedience without principle can reproduce the very harm it claims to resist.', points: 11, quality: 'Developing', feedback: 'This is a meaningful payoff, but it is a bit more explanatory and less polished than the strongest closing move.' }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    id: 'p3',
+                    title: 'Power & Restraint',
+                    cat: 'Leadership & Ethics',
+                    text: "Some argue that true power is shown less through force than through restraint.",
+                    claimOptions: [
+                        { id: 'p3_c1', text: 'Power becomes most legitimate when it is disciplined by restraint, because authority proves itself most clearly when it can act without needing to dominate.', points: 20, quality: 'Sophisticated', feedback: 'This is the strongest claim because it is nuanced, conceptually rich, and sets up two clear lines of reasoning.' },
+                        { id: 'p3_c2', text: 'Restraint often makes power more effective because people trust authority that does not immediately rely on force.', points: 15, quality: 'Strong', feedback: 'This is strong and defensible, but it is slightly less ambitious than the best claim in defining what legitimate power means.' },
+                        { id: 'p3_c3', text: 'People in power should usually try not to overreact when making decisions.', points: 11, quality: 'Developing', feedback: 'This is plausible, but it is more practical than philosophical and gives the essay less conceptual range.' },
+                        { id: 'p3_c4', text: 'Power can look stronger when it is calm and controlled instead of aggressive.', points: 13, quality: 'Developing', feedback: 'This is relevant and arguable, but it is a little more impressionistic and less precise than the strongest option.' }
+                    ],
+                    paragraphs: [
+                        {
+                            title: 'Body Paragraph One',
+                            focus: 'Show how restraint can increase authority by signaling confidence and control.',
+                            topicOptions: [
+                                { id: 'p3_p1_t1', text: 'Restraint strengthens authority because it suggests that power is secure enough to choose judgment over intimidation.', points: 20, quality: 'Sophisticated', feedback: 'Best topic sentence because it is precise, arguable, and strongly aligned with the claim.' },
+                                { id: 'p3_p1_t2', text: 'Leaders often seem more credible when they act with discipline instead of immediate aggression.', points: 16, quality: 'Strong', feedback: 'This is strong, but it is slightly less conceptually sharp than the top option.' },
+                                { id: 'p3_p1_t3', text: 'Restraint can sometimes make powerful people appear more thoughtful.', points: 12, quality: 'Developing', feedback: 'This is plausible, but it gives the paragraph a softer and less purposeful direction.' }
+                            ],
+                            evidenceOptions: [
+                                { id: 'p3_p1_e1', text: 'George Washington’s decision to surrender power after the Revolution reinforced the legitimacy of the new republic by showing that authority did not depend on personal domination.', points: 25, quality: 'Sophisticated', feedback: 'Best evidence because it directly proves that restraint can make power more legitimate.' },
+                                { id: 'p3_p1_e2', text: 'Nelson Mandela’s emphasis on reconciliation over revenge strengthened his authority by proving that leadership could be firm without being vindictive.', points: 22, quality: 'Strong', feedback: 'This is excellent evidence, though the Washington example is slightly cleaner for proving the specific link between power and restraint.' },
+                                { id: 'p3_p1_e3', text: 'Judges often gain public trust by appearing calm and measured rather than emotional.', points: 16, quality: 'Developing', feedback: 'This is relevant, but it is more observational and less substantial than the strongest evidence.' },
+                                { id: 'p3_p1_e4', text: 'Teachers who remain calm in conflict often seem more in control of the room.', points: 13, quality: 'Developing', feedback: 'This supports the idea, but it is less historically weighty and rhetorically convincing.' }
+                            ],
+                            commentary1Options: [
+                                { id: 'p3_p1_m1', text: 'The example matters because Washington proved that real authority can preserve itself without clinging to domination, making restraint a sign of strength rather than weakness.', points: 15, quality: 'Sophisticated', feedback: 'Best commentary because it explains why the evidence proves the paragraph’s reasoning.' },
+                                { id: 'p3_p1_m2', text: 'This suggests that restraint can increase trust because people read self-control as evidence of secure authority.', points: 13, quality: 'Strong', feedback: 'This is strong commentary, but it is slightly less forceful and specific than the top option.' },
+                                { id: 'p3_p1_m3', text: 'This shows that giving up power can sometimes make a leader look stronger.', points: 10, quality: 'Developing', feedback: 'This is relevant, but it stays a little closer to paraphrase than the strongest commentary move.' }
+                            ],
+                            commentary2Options: [
+                                { id: 'p3_p1_n1', text: 'As a result, restraint becomes persuasive not because it avoids action altogether, but because it proves that power is capable of governing itself.', points: 15, quality: 'Sophisticated', feedback: 'Best second commentary move because it turns the evidence into a broader principle.' },
+                                { id: 'p3_p1_n2', text: 'Therefore, restraint often makes authority appear more legitimate because it shows that force is not its only language.', points: 13, quality: 'Strong', feedback: 'This is a strong inference, though it is a bit less elegant than the best option.' },
+                                { id: 'p3_p1_n3', text: 'This helps explain why controlled leaders are often respected more than impulsive ones.', points: 10, quality: 'Developing', feedback: 'This is useful, but it remains a little broader and less analytically ambitious.' }
+                            ],
+                            closingOptions: [
+                                { id: 'p3_p1_c1', text: 'Ultimately, the evidence shows that restraint can deepen authority by proving that power does not need constant force in order to remain real.', points: 15, quality: 'Sophisticated', feedback: 'Best closing because it returns precisely to the claim and completes the paragraph’s logic.' },
+                                { id: 'p3_p1_c2', text: 'Taken together, the paragraph suggests that power can look strongest when it acts with visible control.', points: 13, quality: 'Strong', feedback: 'This is strong, but it is slightly less layered and memorable than the top closing.' },
+                                { id: 'p3_p1_c3', text: 'Overall, restraint can make power more convincing in some situations.', points: 10, quality: 'Developing', feedback: 'This works, but it lands more generally than the best payoff.' }
+                            ]
+                        },
+                        {
+                            title: 'Body Paragraph Two',
+                            focus: 'Show why restraint without resolve can also weaken authority.',
+                            topicOptions: [
+                                { id: 'p3_p2_t1', text: 'Restraint stops functioning as strength when it becomes hesitation, because authority also depends on the willingness to act when action is necessary.', points: 20, quality: 'Sophisticated', feedback: 'Best topic sentence because it gives the essay a strong qualification instead of a flat reversal.' },
+                                { id: 'p3_p2_t2', text: 'Power can become ineffective when restraint turns into passivity.', points: 16, quality: 'Strong', feedback: 'This is a strong sentence, but it is slightly less nuanced than the best option.' },
+                                { id: 'p3_p2_t3', text: 'Leaders still need to act decisively even if restraint is valuable.', points: 12, quality: 'Developing', feedback: 'This is defensible, but it is more obvious and less conceptually refined.' }
+                            ],
+                            evidenceOptions: [
+                                { id: 'p3_p2_e1', text: 'Neville Chamberlain’s policy of appeasement suggested that restraint can fail when it signals unwillingness to confront aggression before it grows stronger.', points: 25, quality: 'Sophisticated', feedback: 'Best evidence because it clearly shows the limit of restraint when resolve is absent.' },
+                                { id: 'p3_p2_e2', text: 'Institutions that ignore escalating misconduct often discover that caution can embolden the behavior they hoped to contain.', points: 20, quality: 'Strong', feedback: 'This is strong support, though it is less historically vivid than the best example.' },
+                                { id: 'p3_p2_e3', text: 'Parents who never enforce rules sometimes lose credibility with children.', points: 15, quality: 'Developing', feedback: 'This is relevant, but it is less substantial and rhetorically weighty than the strongest evidence.' },
+                                { id: 'p3_p2_e4', text: 'Organizations can appear indecisive when they delay difficult choices for too long.', points: 13, quality: 'Developing', feedback: 'This connects to the point, but it is broader and less compelling as proof.' }
+                            ],
+                            commentary1Options: [
+                                { id: 'p3_p2_m1', text: 'This evidence matters because it distinguishes principled restraint from fearful inaction, proving that authority weakens when control no longer includes the courage to respond.', points: 15, quality: 'Sophisticated', feedback: 'Best commentary because it explains the exact distinction the argument depends on.' },
+                                { id: 'p3_p2_m2', text: 'The example suggests that restraint only remains powerful when it is backed by the credible possibility of action.', points: 13, quality: 'Strong', feedback: 'This is strong analysis, though it is slightly less expansive than the best option.' },
+                                { id: 'p3_p2_m3', text: 'This shows that restraint can look weak if a leader seems unwilling to do anything at all.', points: 10, quality: 'Developing', feedback: 'This is relevant, but it simplifies the paragraph’s distinction more than the strongest commentary choice.' }
+                            ],
+                            commentary2Options: [
+                                { id: 'p3_p2_n1', text: 'Therefore, the strongest version of the argument must treat restraint as a discipline within power, not a replacement for decisive responsibility.', points: 15, quality: 'Sophisticated', feedback: 'Best second commentary move because it sharpens the whole essay’s main idea.' },
+                                { id: 'p3_p2_n2', text: 'This helps clarify that restraint persuades only when it appears chosen rather than forced by uncertainty or fear.', points: 13, quality: 'Strong', feedback: 'This is a strong inference, but it is a little less synthesizing than the best option.' },
+                                { id: 'p3_p2_n3', text: 'This means that power still needs action if it wants restraint to seem credible.', points: 10, quality: 'Developing', feedback: 'This is relevant, though it is more basic and less polished than the highest-point response.' }
+                            ],
+                            closingOptions: [
+                                { id: 'p3_p2_c1', text: 'Seen together, these examples show that restraint reveals strength only when it remains connected to the capacity and willingness to act.', points: 15, quality: 'Sophisticated', feedback: 'Best closing because it completes the essay’s qualification with precision.' },
+                                { id: 'p3_p2_c2', text: 'Ultimately, the paragraph suggests that restraint works only when power still appears capable of decisive response.', points: 13, quality: 'Strong', feedback: 'This is strong, but the top closing is slightly more comprehensive and polished.' },
+                                { id: 'p3_p2_c3', text: 'Overall, restraint can become a weakness if it turns into inaction.', points: 10, quality: 'Developing', feedback: 'This works, but it is flatter and less rhetorically complete than the best closing.' }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    id: 'p4',
+                    title: 'Individuality & Belonging',
+                    cat: 'Identity & Society',
+                    text: "Some argue that individuality matters most when a person resists the pressure to conform.",
+                    claimOptions: [
+                        { id: 'p4_c1', text: 'Individuality matters most not when it rejects society altogether, but when it preserves independent judgment within the pressure to belong.', points: 20, quality: 'Sophisticated', feedback: 'This is the strongest claim because it is nuanced and gives the essay a strong central tension to explore.' },
+                        { id: 'p4_c2', text: 'People need individuality because conformity can stop them from thinking for themselves.', points: 15, quality: 'Strong', feedback: 'This is strong and arguable, but it is slightly less nuanced than the best claim.' },
+                        { id: 'p4_c3', text: 'Individuality is important because people should be themselves.', points: 10, quality: 'Developing', feedback: 'This is relevant, but it is too broad and familiar to drive a sophisticated essay.' },
+                        { id: 'p4_c4', text: 'Conformity becomes dangerous when it matters more than a person’s own judgment.', points: 16, quality: 'Strong', feedback: 'This is close to the best claim, though it is a little narrower and less balanced in how it frames individuality.' }
+                    ],
+                    paragraphs: [
+                        {
+                            title: 'Body Paragraph One',
+                            focus: 'Show how individuality protects moral or intellectual judgment.',
+                            topicOptions: [
+                                { id: 'p4_p1_t1', text: 'Individuality becomes valuable when it preserves a person’s ability to judge for themselves instead of borrowing the crowd’s conclusions.', points: 20, quality: 'Sophisticated', feedback: 'Best topic sentence because it is precise, arguable, and directly tied to the claim.' },
+                                { id: 'p4_p1_t2', text: 'Independent thinking matters because groups are often wrong in ways individuals can still recognize.', points: 17, quality: 'Strong', feedback: 'This is strong, though slightly less polished and less balanced than the top option.' },
+                                { id: 'p4_p1_t3', text: 'People need some individuality so they do not just follow everyone else.', points: 12, quality: 'Developing', feedback: 'This is defensible, but it is less conceptually refined than the stronger choices.' }
+                            ],
+                            evidenceOptions: [
+                                { id: 'p4_p1_e1', text: 'Atticus Finch’s defense of Tom Robinson illustrates how individuality can preserve moral judgment even when a community rewards conformity.', points: 25, quality: 'Sophisticated', feedback: 'Best evidence because it directly proves that individuality can protect ethical reasoning against group pressure.' },
+                                { id: 'p4_p1_e2', text: 'Scientists who challenged false consensus, from Copernicus to Semmelweis, often relied on independent judgment before public opinion caught up.', points: 22, quality: 'Strong', feedback: 'This is strong evidence, though it is slightly broader and less narratively focused than the best option.' },
+                                { id: 'p4_p1_e3', text: 'Students sometimes make better decisions when they avoid peer pressure.', points: 15, quality: 'Developing', feedback: 'This is relevant, but it is less weighty and persuasive than the stronger examples.' },
+                                { id: 'p4_p1_e4', text: 'Whistleblowers often resist group culture in order to report wrongdoing.', points: 18, quality: 'Strong', feedback: 'This is solid evidence, though it is a little less specific than the top example.' }
+                            ],
+                            commentary1Options: [
+                                { id: 'p4_p1_m1', text: 'The example matters because individuality functions here as moral independence, allowing judgment to remain intact even when conformity would be socially easier.', points: 15, quality: 'Sophisticated', feedback: 'Best commentary because it explains why the evidence proves the argument instead of summarizing it.' },
+                                { id: 'p4_p1_m2', text: 'This suggests that individuality matters most when it protects a person from confusing popularity with truth.', points: 13, quality: 'Strong', feedback: 'This is strong analysis, but it is slightly less fully developed than the top option.' },
+                                { id: 'p4_p1_m3', text: 'This shows that individuality can help people avoid doing what everyone else expects.', points: 10, quality: 'Developing', feedback: 'This is relevant, though it is a little broader and less analytical than the strongest commentary.' }
+                            ],
+                            commentary2Options: [
+                                { id: 'p4_p1_n1', text: 'As a result, individuality becomes socially valuable not because it celebrates difference for its own sake, but because it keeps conscience and judgment from being absorbed by the group.', points: 15, quality: 'Sophisticated', feedback: 'Best second commentary move because it develops the larger principle behind the paragraph.' },
+                                { id: 'p4_p1_n2', text: 'Therefore, the real danger of conformity is that it can make agreement feel more important than truth.', points: 13, quality: 'Strong', feedback: 'This is a strong inference, though it is a bit less nuanced than the best option.' },
+                                { id: 'p4_p1_n3', text: 'This helps explain why individuality matters most when people are under pressure to fit in.', points: 11, quality: 'Developing', feedback: 'This is useful, but it does not extend the reasoning as sharply as the strongest option.' }
+                            ],
+                            closingOptions: [
+                                { id: 'p4_p1_c1', text: 'Ultimately, the paragraph shows that individuality matters because it preserves the judgment that conformity can quietly erase.', points: 15, quality: 'Sophisticated', feedback: 'Best closing because it delivers a clear argumentative payoff.' },
+                                { id: 'p4_p1_c2', text: 'Taken together, the evidence suggests that individuality becomes essential when group pressure threatens independent thought.', points: 13, quality: 'Strong', feedback: 'This is strong, but it is slightly less concise and memorable than the top option.' },
+                                { id: 'p4_p1_c3', text: 'Overall, individuality can help people think more clearly than the crowd.', points: 10, quality: 'Developing', feedback: 'This works, but it lands more generally than the strongest closing.' }
+                            ]
+                        },
+                        {
+                            title: 'Body Paragraph Two',
+                            focus: 'Show why individuality still needs connection rather than pure isolation.',
+                            topicOptions: [
+                                { id: 'p4_p2_t1', text: 'Individuality loses much of its value when it becomes pure isolation, because identity develops most meaningfully in conversation with other people rather than against them alone.', points: 20, quality: 'Sophisticated', feedback: 'Best topic sentence because it adds a strong qualification rather than a simple reversal.' },
+                                { id: 'p4_p2_t2', text: 'Being independent still requires some connection to other people and shared values.', points: 16, quality: 'Strong', feedback: 'This is strong and defensible, but it is slightly less conceptually rich than the best option.' },
+                                { id: 'p4_p2_t3', text: 'Individuality can become a problem if someone refuses every kind of belonging.', points: 13, quality: 'Developing', feedback: 'This is relevant, though it is a little less elegant and precise than the strongest choice.' }
+                            ],
+                            evidenceOptions: [
+                                { id: 'p4_p2_e1', text: 'Into the Wild suggests that self-definition becomes incomplete when a person tries to build identity by rejecting all sustaining forms of human connection.', points: 25, quality: 'Sophisticated', feedback: 'Best evidence because it directly supports the claim’s qualification about belonging and isolation.' },
+                                { id: 'p4_p2_e2', text: 'Victor Frankenstein’s obsessive isolation shows how brilliance detached from relationship can turn destructive rather than meaningful.', points: 21, quality: 'Strong', feedback: 'This is strong evidence, though it is slightly less directly focused on conformity and belonging than the best option.' },
+                                { id: 'p4_p2_e3', text: 'Students who avoid all group influence can still struggle because learning often depends on dialogue and community.', points: 16, quality: 'Developing', feedback: 'This is relevant, but it is more observational and less rhetorically powerful than the strongest evidence.' },
+                                { id: 'p4_p2_e4', text: 'Artists often develop a distinctive voice only after engaging deeply with traditions they later revise.', points: 19, quality: 'Strong', feedback: 'This is strong and subtle evidence, though it is slightly less immediate than the top example.' }
+                            ],
+                            commentary1Options: [
+                                { id: 'p4_p2_m1', text: 'This evidence matters because it shows that individuality is not simply the absence of conformity; it is a form of selfhood that still depends on meaningful relation to others.', points: 15, quality: 'Sophisticated', feedback: 'Best commentary because it explains the distinction the essay needs.' },
+                                { id: 'p4_p2_m2', text: 'The example suggests that independence becomes shallow when it defines itself only by separation rather than by thoughtful judgment.', points: 13, quality: 'Strong', feedback: 'This is strong analysis, but it is slightly less complete than the top option.' },
+                                { id: 'p4_p2_m3', text: 'This shows that being different is not enough if a person cuts themselves off from everyone else.', points: 10, quality: 'Developing', feedback: 'This is relevant, though it is a little less refined than the strongest commentary move.' }
+                            ],
+                            commentary2Options: [
+                                { id: 'p4_p2_n1', text: 'Therefore, the strongest version of the argument must defend individuality as independent judgment within community rather than rebellion for its own sake.', points: 15, quality: 'Sophisticated', feedback: 'Best second commentary move because it sharpens the whole essay’s central qualification.' },
+                                { id: 'p4_p2_n2', text: 'This helps clarify that belonging is not the enemy of individuality unless it destroys the freedom to think and choose.', points: 13, quality: 'Strong', feedback: 'This is a strong inference, though it is slightly less forceful than the top option.' },
+                                { id: 'p4_p2_n3', text: 'This means individuality matters most when it resists pressure without refusing every kind of connection.', points: 11, quality: 'Developing', feedback: 'This is relevant and useful, but it is a bit less polished than the strongest response.' }
+                            ],
+                            closingOptions: [
+                                { id: 'p4_p2_c1', text: 'Seen together, these examples show that individuality matters most when it protects independent judgment without abandoning the human connections that give identity shape.', points: 15, quality: 'Sophisticated', feedback: 'Best closing because it synthesizes the qualification back into the main claim.' },
+                                { id: 'p4_p2_c2', text: 'Ultimately, the paragraph suggests that individuality is strongest when it remains connected to community without being absorbed by it.', points: 13, quality: 'Strong', feedback: 'This is strong, though the top option is slightly more complete and memorable.' },
+                                { id: 'p4_p2_c3', text: 'Overall, individuality works best when people stay independent but do not isolate themselves completely.', points: 10, quality: 'Developing', feedback: 'This works, but it is flatter and less rhetorically sharp than the strongest closing.' }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        };
+
+        const INTERMISSION_MODES = [
+            {
+                id: 'shooter',
+                title: 'Galaga Assault',
+                instruction: 'Use left and right arrows to dodge enemy fire and press space to blast the formation.',
+                tip: 'Destroying more ships and keeping your hull intact earns the best intermission bonus.',
+                objective: 'Break the enemy formation',
+                maxBonus: 5
+            },
+            {
+                id: 'dodge',
+                title: 'Dive Raid',
+                instruction: 'Use left and right arrows to evade diving raiders and press space to return fire.',
+                tip: 'This one should feel frantic. Clear raiders and survive the wave to lock in more points.',
+                objective: 'Survive the attack wave',
+                maxBonus: 5
+            }
+        ];
+
+        const state = {
+            phase: 'prompt',
+            prompt: null,
+            score: 0,
+            currentStep: 0,
+            steps: [],
+            currentParagraph: 0,
+            claim: null,
+            paragraphs: [
+                { topic: null, evidence: null, commentary1: null, commentary2: null, closing: null, intermissionBonus: 0 },
+                { topic: null, evidence: null, commentary1: null, commentary2: null, closing: null, intermissionBonus: 0 }
+            ],
+            breakdown: [],
+            pendingChoice: null,
+            unlockedHint: '',
+            lastDraftHighlight: ''
+        };
+
+        const ui = {
+            promptGrid: document.getElementById('prompt-grid'),
+            currentPromptText: document.getElementById('current-prompt-text'),
+            choiceTitle: document.getElementById('choice-title'),
+            choiceSubtitle: document.getElementById('choice-subtitle'),
+            choiceList: document.getElementById('choice-list'),
+            taskLabel: document.getElementById('task-label'),
+            paragraphLabel: document.getElementById('paragraph-label'),
+            choiceCoach: document.getElementById('choice-coach'),
+            choiceHint: document.getElementById('choice-hint'),
+            choiceFeedbackOverlay: document.getElementById('choice-feedback-overlay'),
+            choiceFeedbackTitle: document.getElementById('choice-feedback-title'),
+            choiceFeedbackText: document.getElementById('choice-feedback-text'),
+            choiceFeedbackContinue: document.getElementById('choice-feedback-continue'),
+            liveDraftStatus: document.getElementById('live-draft-status'),
+            liveClaimOutput: document.getElementById('live-claim-output'),
+            liveParagraphOne: document.getElementById('live-paragraph-one'),
+            liveParagraphTwo: document.getElementById('live-paragraph-two'),
+            missionStatus: document.getElementById('mission-status-text'),
+            integrityBar: document.getElementById('integrity-bar'),
+            scoreTotal: document.getElementById('score-total'),
+            arcadeIntro: document.getElementById('arcade-intro'),
+            arcadeObjective: document.getElementById('arcade-objective'),
+            arcadeTitle: document.getElementById('arcade-title'),
+            arcadeInstruction: document.getElementById('arcade-instruction'),
+            arcadeBrief: document.getElementById('arcade-brief'),
+            arcadeMode: document.getElementById('arcade-mode'),
+            arcadeTimer: document.getElementById('arcade-timer'),
+            arcadeScore: document.getElementById('arcade-score'),
+            arcadeTip: document.getElementById('arcade-tip'),
+            arcadeHintRule: document.getElementById('arcade-hint-rule'),
+            arcadeBonus: document.getElementById('arcade-bonus'),
+            arcadeStartBtn: document.getElementById('arcade-start-btn'),
+            arcadeOverlay: document.getElementById('arcade-overlay'),
+            finalScore: document.getElementById('final-score'),
+            finalRank: document.getElementById('final-rank'),
+            scoreFeedback: document.getElementById('score-feedback'),
+            paragraphOneOutput: document.getElementById('paragraph-one-output'),
+            paragraphTwoOutput: document.getElementById('paragraph-two-output'),
+            essayOutput: document.getElementById('essay-output'),
+            breakdownOutput: document.getElementById('breakdown-output'),
+            toast: document.getElementById('toast')
+        };
+
+        const canvas = document.getElementById('arcade-canvas');
+        const ctx = canvas.getContext('2d');
+
+        const arcade = {
+            mode: null,
+            running: false,
+            raf: 0,
+            startTime: 0,
+            duration: 10000,
+            bonus: 0,
+            shooterTargets: [],
+            shooterBullets: [],
+            enemyBullets: [],
+            shooterDir: 1,
+            shooterDrop: 0,
+            lastShotAt: 0,
+            lastEnemyShotAt: 0,
+            lastDiveAt: 0,
+            shipX: canvas.width / 2,
+            playerLives: 3,
+            asteroids: [],
+            enemyRaiders: [],
+            dodgeLives: 3,
+            dodgeEnded: false,
+            dodgeInvulnerableUntil: 0,
+            explosions: [],
+            scannerX: 60,
+            scannerDir: 1,
+            docks: 0,
+            keys: {}
+        };
+
+        function initStars() {
+            const container = document.getElementById('environment');
+            for (let i = 0; i < 100; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                const size = Math.random() * 2 + 1;
+                star.style.width = size + 'px';
+                star.style.height = size + 'px';
+                star.style.left = Math.random() * 100 + 'vw';
+                star.style.top = Math.random() * 100 + 'vh';
+                star.style.setProperty('--duration', (Math.random() * 3 + 1) + 's');
+                star.style.setProperty('--drift-dur', (Math.random() * 100 + 50) + 's');
+                container.appendChild(star);
+            }
+        }
+
+        function phaseProgress() {
+            const total = state.steps.length || 1;
+            return Math.min(100, Math.round((state.currentStep / total) * 100));
+        }
+
+        function updateHud() {
+            const labels = {
+                prompt: 'Selecting Prompt',
+                choice: 'Evaluating Best Response',
+                arcade: 'Retro Stage Manager Active',
+                debrief: 'Essay Debrief Ready'
+            };
+            ui.missionStatus.textContent = labels[state.phase] || 'Mission Active';
+            ui.integrityBar.style.width = `${phaseProgress()}%`;
+            ui.scoreTotal.textContent = `${state.score}`;
+        }
+
+        function showPhase(phaseId) {
+            state.phase = phaseId;
+            document.querySelectorAll('.phase-section').forEach(section => section.classList.add('hidden'));
+            document.getElementById(`phase-${phaseId}`).classList.remove('hidden');
+            updateHud();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function addScore(points, label, feedback) {
+            state.score += points;
+            state.breakdown.push({ label, points, feedback });
+            updateHud();
+        }
+
+        function shuffleArray(items) {
+            const copy = [...items];
+            for (let i = copy.length - 1; i > 0; i -= 1) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [copy[i], copy[j]] = [copy[j], copy[i]];
+            }
+            return copy;
+        }
+
+        function buildLiveParagraphText(paragraph) {
+            const parts = [
+                paragraph.topic?.text,
+                paragraph.evidence?.text,
+                paragraph.commentary1?.text,
+                paragraph.commentary2?.text,
+                paragraph.closing?.text
+            ].filter(Boolean);
+            return parts.length ? parts.join(' ') : 'Awaiting paragraph construction.';
+        }
+
+        function flashLiveDraftPanel(element, nextText) {
+            if (element.textContent === nextText) return;
+            element.textContent = nextText;
+            element.classList.remove('terminal-flash');
+            void element.offsetWidth;
+            element.classList.add('terminal-flash');
+        }
+
+        function applyLiveDraftHighlight() {
+            const targets = {
+                claim: ui.liveClaimOutput,
+                paragraph1: ui.liveParagraphOne,
+                paragraph2: ui.liveParagraphTwo
+            };
+            Object.values(targets).forEach((element) => element.classList.remove('terminal-active'));
+            if (state.lastDraftHighlight && targets[state.lastDraftHighlight]) {
+                targets[state.lastDraftHighlight].classList.add('terminal-active');
+            }
+        }
+
+        function renderLiveDraft(step = currentStepData()) {
+            flashLiveDraftPanel(ui.liveClaimOutput, state.claim?.text || 'No claim selected yet.');
+            flashLiveDraftPanel(ui.liveParagraphOne, buildLiveParagraphText(state.paragraphs[0]));
+            flashLiveDraftPanel(ui.liveParagraphTwo, buildLiveParagraphText(state.paragraphs[1]));
+            applyLiveDraftHighlight();
+
+            if (!step) {
+                ui.liveDraftStatus.textContent = 'Draft sequence complete';
+                return;
+            }
+
+            if (step.type === 'claim') {
+                ui.liveDraftStatus.textContent = 'Claim selection in progress';
+                return;
+            }
+
+            if (step.type === 'arcade') {
+                ui.liveDraftStatus.textContent = 'Intermission active';
+                return;
+            }
+
+            const paragraphNumber = step.paragraph !== undefined ? step.paragraph + 1 : '';
+            const labels = {
+                topic: 'Topic sentence',
+                evidence: 'Evidence',
+                commentary1: 'Commentary one',
+                commentary2: 'Commentary two',
+                closing: 'Closing move'
+            };
+            ui.liveDraftStatus.textContent = `Building paragraph ${paragraphNumber}: ${labels[step.type] || 'Next choice'}`;
+        }
+
+        function renderPromptGrid() {
+            ui.promptGrid.innerHTML = '';
+            shuffleArray(GAME_DATA.prompts).forEach((prompt) => {
+                const card = document.createElement('div');
+                card.className = 'panel p-8 selectable-card flex flex-col justify-between';
+                card.onclick = () => startMission(prompt);
+                card.innerHTML = `
+                    <div>
+                        <span class="orbitron text-[10px] text-cyan-400 font-bold tracking-widest uppercase">${prompt.cat}</span>
+                        <h3 class="orbitron text-2xl font-black text-white mt-2">${prompt.title}</h3>
+                        <p class="text-slate-400 text-sm mt-4 italic">"${prompt.text}"</p>
+                    </div>
+                    <div class="mt-8 pt-4 border-t border-white/10 text-right">
+                        <span class="orbitron text-xs text-purple-400 font-bold">ENGAGE &rarr;</span>
+                    </div>
+                `;
+                ui.promptGrid.appendChild(card);
+            });
+        }
+
+        function startMission(prompt) {
+            state.prompt = prompt;
+            state.score = 0;
+            state.currentStep = 0;
+            state.breakdown = [];
+            state.claim = null;
+            state.unlockedHint = '';
+            state.lastDraftHighlight = '';
+            state.paragraphs = [
+                { topic: null, evidence: null, commentary1: null, commentary2: null, closing: null, intermissionBonus: 0 },
+                { topic: null, evidence: null, commentary1: null, commentary2: null, closing: null, intermissionBonus: 0 }
+            ];
+            state.steps = [
+                { type: 'claim' },
+                { type: 'arcade', mode: 0, label: 'Launch Intermission' },
+                { type: 'topic', paragraph: 0 },
+                { type: 'evidence', paragraph: 0 },
+                { type: 'commentary1', paragraph: 0 },
+                { type: 'commentary2', paragraph: 0 },
+                { type: 'closing', paragraph: 0 },
+                { type: 'arcade', mode: 1, label: 'Mid-Mission Intermission' },
+                { type: 'topic', paragraph: 1 },
+                { type: 'evidence', paragraph: 1 },
+                { type: 'commentary1', paragraph: 1 },
+                { type: 'commentary2', paragraph: 1 },
+                { type: 'closing', paragraph: 1 }
+            ];
+            ui.currentPromptText.textContent = `"${prompt.text}"`;
+            renderLiveDraft(state.steps[0]);
+            advanceStep();
+        }
+
+        function currentStepData() {
+            return state.steps[state.currentStep] || null;
+        }
+
+        function advanceStep() {
+            const step = currentStepData();
+            if (!step) {
+                renderDebrief();
+                showPhase('debrief');
+                return;
+            }
+
+            if (step.type === 'arcade') {
+                prepareArcade(step);
+            } else {
+                renderChoiceStep(step);
+            }
+        }
+
+        function renderChoiceStep(step) {
+            const prompt = state.prompt;
+            const para = step.paragraph !== undefined ? prompt.paragraphs[step.paragraph] : null;
+            let options = [];
+            let title = '';
+            let subtitle = '';
+            let coach = '';
+            let task = '';
+            let paragraphLabel = 'Claim setup';
+
+            if (step.type === 'claim') {
+                options = prompt.claimOptions;
+                title = 'Choose A Claim';
+                subtitle = 'Select the claim you think gives the most nuanced and meaningful argument for the prompt.';
+                coach = 'Look for a claim that pinpoints a larger idea and gives both body paragraphs something important to prove.';
+                task = 'Claim Selection';
+            }
+            if (step.type === 'topic') {
+                options = para.topicOptions;
+                title = `${para.title}: Topic Sentence`;
+                subtitle = para.focus;
+                coach = 'Choose the topic sentence that gives this paragraph a clear line of reasoning and stays tightly connected to the claim.';
+                task = 'Topic Sentence';
+                paragraphLabel = para.title;
+            }
+            if (step.type === 'evidence') {
+                options = para.evidenceOptions;
+                title = `${para.title}: Choose Evidence`;
+                subtitle = 'Argument essays need one strong piece of evidence per body paragraph. Pick the most effective proof for this paragraph.';
+                coach = 'Look for evidence that fits the topic sentence directly and gives commentary something substantial to explain.';
+                task = 'Evidence Selection';
+                paragraphLabel = para.title;
+            }
+            if (step.type === 'commentary1') {
+                options = para.commentary1Options;
+                title = `${para.title}: Commentary Move One`;
+                subtitle = 'Choose the first sentence that explains how the evidence proves the topic sentence.';
+                coach = 'Avoid summary. Strong commentary explains why the evidence matters for the argument.';
+                task = 'Commentary One';
+                paragraphLabel = para.title;
+            }
+            if (step.type === 'commentary2') {
+                options = para.commentary2Options;
+                title = `${para.title}: Commentary Move Two`;
+                subtitle = 'Choose the follow-up reasoning that deepens the analysis rather than repeating it.';
+                coach = 'The second commentary sentence should widen the implication or sharpen the logic.';
+                task = 'Commentary Two';
+                paragraphLabel = para.title;
+            }
+            if (step.type === 'closing') {
+                options = para.closingOptions;
+                title = `${para.title}: Closing Move`;
+                subtitle = 'Choose the sentence that gives the paragraph its argumentative payoff.';
+                coach = 'A strong closing move sounds like the paragraph has proven something, not just ended.';
+                task = 'Paragraph Closing';
+                paragraphLabel = para.title;
+            }
+
+            ui.choiceTitle.textContent = title;
+            ui.choiceSubtitle.textContent = subtitle;
+            ui.choiceCoach.textContent = coach;
+            ui.choiceHint.textContent = state.unlockedHint || 'No arcade hint unlocked yet.';
+            ui.taskLabel.textContent = task;
+            ui.paragraphLabel.textContent = paragraphLabel;
+            ui.choiceList.innerHTML = '';
+            state.unlockedHint = '';
+            renderLiveDraft(step);
+
+            shuffleArray(options).forEach((option) => {
+                const card = document.createElement('div');
+                card.className = 'selectable-card panel p-5 space-y-3';
+                let optionLabel = 'Option';
+                if (step.type === 'claim') optionLabel = 'Claim Option';
+                if (step.type === 'topic') optionLabel = 'Topic Sentence';
+                if (step.type === 'evidence') optionLabel = 'Evidence Option';
+                if (step.type === 'commentary1' || step.type === 'commentary2') optionLabel = 'Commentary Move';
+                if (step.type === 'closing') optionLabel = 'Closing Move';
+                const topMeta = `<span class="orbitron text-[10px] uppercase tracking-[0.2em] text-cyan-400">${optionLabel}</span>`;
+                card.onclick = () => chooseOption(step, option);
+                card.innerHTML = `
+                    <div class="flex justify-between items-start gap-4">${topMeta}</div>
+                    <p class="text-slate-200 text-sm leading-relaxed">${option.text}</p>
+                `;
+                ui.choiceList.appendChild(card);
+            });
+
+            showPhase('choice');
+        }
+
+        function showChoiceFeedback(step, option) {
+            const labels = {
+                claim: 'Claim Review',
+                topic: 'Topic Sentence Review',
+                evidence: 'Evidence Review',
+                commentary1: 'Commentary Review',
+                commentary2: 'Commentary Review',
+                closing: 'Closing Move Review'
+            };
+            ui.choiceFeedbackTitle.textContent = labels[step.type] || 'Selection Review';
+            ui.choiceFeedbackText.textContent = option.feedback;
+            ui.choiceFeedbackOverlay.classList.remove('hidden');
+        }
+
+        function continueFromChoiceFeedback() {
+            ui.choiceFeedbackOverlay.classList.add('hidden');
+            if (!state.pendingChoice) return;
+            const { step, option } = state.pendingChoice;
+            state.pendingChoice = null;
+
+            if (step.type === 'claim') {
+                state.claim = option;
+                state.lastDraftHighlight = 'claim';
+                addScore(option.points, 'Claim Choice', option.feedback);
+            } else {
+                const paragraph = state.paragraphs[step.paragraph];
+                paragraph[step.type] = option;
+                state.lastDraftHighlight = step.paragraph === 0 ? 'paragraph1' : 'paragraph2';
+                addScore(option.points, `${state.prompt.paragraphs[step.paragraph].title} / ${step.type}`, option.feedback);
+            }
+
+            state.currentStep += 1;
+            advanceStep();
+        }
+
+        function chooseOption(step, option) {
+            state.pendingChoice = { step, option };
+            showChoiceFeedback(step, option);
+        }
+
+        function prepareArcade(step) {
+            const mode = INTERMISSION_MODES[step.mode % INTERMISSION_MODES.length];
+            arcade.mode = mode;
+            arcade.running = false;
+            arcade.bonus = 0;
+            arcade.startTime = 0;
+            arcade.shipX = canvas.width / 2;
+            arcade.asteroids = [];
+            arcade.enemyRaiders = [];
+            arcade.enemyBullets = [];
+            arcade.dodgeLives = 3;
+            arcade.dodgeEnded = false;
+            arcade.dodgeInvulnerableUntil = 0;
+            arcade.lastEnemyShotAt = 0;
+            arcade.lastDiveAt = 0;
+            arcade.playerLives = 3;
+            arcade.explosions = [];
+            arcade.shooterTargets = Array.from({ length: 10 }, (_, i) => ({
+                x: 160 + (i % 5) * 110,
+                y: 90 + Math.floor(i / 5) * 70,
+                w: 34,
+                h: 24,
+                hit: false,
+                diving: false,
+                vx: 0,
+                vy: 0
+            }));
+            arcade.shooterBullets = [];
+            arcade.shooterDir = 1;
+            arcade.shooterDrop = 0;
+            arcade.lastShotAt = 0;
+            arcade.scannerX = 60;
+            arcade.scannerDir = 1;
+            arcade.docks = 0;
+            ui.arcadeTitle.textContent = mode.title;
+            ui.arcadeInstruction.textContent = mode.instruction;
+            ui.arcadeBrief.textContent = mode.instruction;
+            ui.arcadeObjective.textContent = mode.objective;
+            ui.arcadeMode.textContent = mode.title;
+            ui.arcadeTimer.textContent = '10';
+            ui.arcadeScore.textContent = '0';
+            ui.arcadeBonus.textContent = '0';
+            ui.arcadeTip.textContent = mode.tip;
+            ui.arcadeHintRule.textContent = 'Score 3 or more bonus points here to unlock a hint for the next writing choice.';
+            ui.arcadeIntro.textContent = `Intermission: ${step.label}. Play quickly, then get back to the writing mission.`;
+            ui.arcadeOverlay.classList.remove('hidden');
+            renderLiveDraft(step);
+            drawArcadeFrame(0);
+            showPhase('arcade');
+        }
+
+        function startArcade() {
+            arcade.running = true;
+            arcade.startTime = performance.now();
+            ui.arcadeOverlay.classList.add('hidden');
+            cancelAnimationFrame(arcade.raf);
+            arcadeLoop(performance.now());
+        }
+
+        function arcadeLoop(now) {
+            if (!arcade.running) return;
+            const elapsed = now - arcade.startTime;
+            const remaining = Math.max(0, Math.ceil((arcade.duration - elapsed) / 1000));
+            ui.arcadeTimer.textContent = `${remaining}`;
+            drawArcadeFrame(elapsed);
+
+            if (elapsed >= arcade.duration) {
+                finishArcade();
+                return;
+            }
+
+            arcade.raf = requestAnimationFrame(arcadeLoop);
+        }
+
+        function drawArcadeBackground() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#03060f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < 28; i += 1) {
+                const x = (i * 97 + Math.floor(performance.now() * 0.08)) % canvas.width;
+                const y = (i * 43 + Math.floor(performance.now() * 0.03)) % canvas.height;
+                ctx.fillStyle = i % 3 === 0 ? 'rgba(255,255,255,0.8)' : 'rgba(34,211,238,0.55)';
+                ctx.fillRect(x, y, 2, 2);
+            }
+            ctx.strokeStyle = 'rgba(34,211,238,0.08)';
+            for (let i = 0; i < 12; i += 1) {
+                ctx.beginPath();
+                ctx.moveTo(0, i * 36);
+                ctx.lineTo(canvas.width, i * 36);
+                ctx.stroke();
+            }
+        }
+
+        function drawPlayerShip(x, y, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x - 20, y, 40, 14);
+            ctx.fillRect(x - 8, y - 12, 16, 14);
+            ctx.fillRect(x - 2, y - 20, 4, 10);
+            ctx.fillRect(x - 28, y + 2, 8, 8);
+            ctx.fillRect(x + 20, y + 2, 8, 8);
+        }
+
+        function drawEnemyShip(x, y, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x - 16, y - 10, 32, 12);
+            ctx.fillRect(x - 10, y + 2, 20, 8);
+            ctx.fillRect(x - 22, y - 2, 8, 8);
+            ctx.fillRect(x + 14, y - 2, 8, 8);
+            ctx.fillStyle = '#020617';
+            ctx.fillRect(x - 8, y - 6, 4, 4);
+            ctx.fillRect(x + 4, y - 6, 4, 4);
+        }
+
+        function addExplosion(x, y, color = '#f97316') {
+            arcade.explosions.push({ x, y, r: 6, life: 16, color });
+        }
+
+        function drawExplosions() {
+            arcade.explosions.forEach((blast) => {
+                ctx.strokeStyle = blast.color;
+                ctx.globalAlpha = Math.max(0, blast.life / 16);
+                ctx.beginPath();
+                ctx.arc(blast.x, blast.y, blast.r, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+                blast.r += 1.4;
+                blast.life -= 1;
+            });
+            arcade.explosions = arcade.explosions.filter((blast) => blast.life > 0);
+        }
+
+        function drawArcadeFrame(elapsed) {
+            drawArcadeBackground();
+            if (arcade.mode.id === 'shooter') drawShooter(elapsed);
+            if (arcade.mode.id === 'dodge') drawDodge(elapsed);
+        }
+
+        function drawShooter(elapsed) {
+            if (arcade.keys.ArrowLeft) arcade.shipX -= 7;
+            if (arcade.keys.ArrowRight) arcade.shipX += 7;
+            arcade.shipX = Math.max(34, Math.min(canvas.width - 34, arcade.shipX));
+
+            let minX = Infinity;
+            let maxX = -Infinity;
+            arcade.shooterTargets.forEach((target) => {
+                if (target.hit) return;
+                if (target.diving) {
+                    target.x += target.vx;
+                    target.y += target.vy;
+                    target.vy += 0.03;
+                } else {
+                    target.x += arcade.shooterDir * 1.35;
+                    minX = Math.min(minX, target.x - target.w / 2);
+                    maxX = Math.max(maxX, target.x + target.w / 2);
+                }
+            });
+
+            if (Number.isFinite(maxX) && (maxX >= canvas.width - 36 || minX <= 36)) {
+                arcade.shooterDir *= -1;
+                arcade.shooterTargets.forEach((target) => {
+                    if (!target.hit && !target.diving) target.y += 14;
+                });
+            }
+
+            if (elapsed - arcade.lastDiveAt > 1700) {
+                const formationTargets = arcade.shooterTargets.filter((target) => !target.hit && !target.diving);
+                if (formationTargets.length) {
+                    const diver = formationTargets[Math.floor(Math.random() * formationTargets.length)];
+                    diver.diving = true;
+                    diver.vx = (arcade.shipX - diver.x) * 0.01;
+                    diver.vy = 2.4;
+                    arcade.lastDiveAt = elapsed;
+                }
+            }
+
+            if (elapsed - arcade.lastEnemyShotAt > 620) {
+                const shooters = arcade.shooterTargets.filter((target) => !target.hit);
+                if (shooters.length) {
+                    const shooter = shooters[Math.floor(Math.random() * shooters.length)];
+                    arcade.enemyBullets.push({ x: shooter.x, y: shooter.y + 10, vy: 4.4, mode: 'shooter' });
+                    arcade.lastEnemyShotAt = elapsed;
+                }
+            }
+
+            const shipHitbox = { left: arcade.shipX - 18, right: arcade.shipX + 18, top: 342, bottom: 376 };
+            const shipColor = arcade.playerLives === 1 && Math.floor(elapsed / 120) % 2 === 0 ? '#f97316' : '#22d3ee';
+            drawPlayerShip(arcade.shipX, 362, shipColor);
+
+            arcade.shooterBullets.forEach((bullet) => {
+                bullet.y += bullet.vy;
+            });
+            arcade.shooterBullets = arcade.shooterBullets.filter((bullet) => bullet.y > -20);
+
+            arcade.shooterBullets.forEach((bullet) => {
+                ctx.fillStyle = '#f8fafc';
+                ctx.fillRect(bullet.x - 2, bullet.y - 8, 4, 10);
+                arcade.shooterTargets.forEach((target) => {
+                    if (target.hit) return;
+                    const hitX = bullet.x >= target.x - target.w / 2 && bullet.x <= target.x + target.w / 2;
+                    const hitY = bullet.y >= target.y - target.h / 2 && bullet.y <= target.y + target.h / 2;
+                    if (hitX && hitY) {
+                        target.hit = true;
+                        addExplosion(target.x, target.y, '#22d3ee');
+                        bullet.y = -100;
+                    }
+                });
+            });
+
+            arcade.enemyBullets.forEach((shot) => {
+                shot.y += shot.vy;
+                ctx.fillStyle = '#ef4444';
+                ctx.fillRect(shot.x - 2, shot.y, 4, 12);
+            });
+            arcade.enemyBullets = arcade.enemyBullets.filter((shot) => shot.y < canvas.height + 20);
+
+            arcade.shooterTargets.forEach((target) => {
+                if (target.hit) return;
+                drawEnemyShip(target.x, target.y, target.diving ? '#f97316' : '#22d3ee');
+            });
+
+            const playerHit = arcade.enemyBullets.some((shot) =>
+                shot.x >= shipHitbox.left && shot.x <= shipHitbox.right && shot.y >= shipHitbox.top && shot.y <= shipHitbox.bottom
+            ) || arcade.shooterTargets.some((target) =>
+                !target.hit && target.diving &&
+                target.x + 16 >= shipHitbox.left && target.x - 16 <= shipHitbox.right &&
+                target.y + 10 >= shipHitbox.top && target.y - 10 <= shipHitbox.bottom
+            );
+
+            if (playerHit && arcade.playerLives > 0) {
+                arcade.playerLives -= 1;
+                addExplosion(arcade.shipX, 356, '#ef4444');
+                arcade.enemyBullets = [];
+                arcade.shooterTargets.forEach((target, index) => {
+                    if (!target.hit && target.diving) {
+                        target.diving = false;
+                        target.x = 160 + (index % 5) * 110;
+                        target.y = 90 + Math.floor(index / 5) * 70;
+                        target.vx = 0;
+                        target.vy = 0;
+                    }
+                });
+                if (arcade.playerLives <= 0) {
+                    finishArcade();
+                    return;
+                }
+            }
+
+            arcade.shooterTargets.forEach((target, index) => {
+                if (!target.hit && target.y > canvas.height + 30) {
+                    target.diving = false;
+                    target.x = 160 + (index % 5) * 110;
+                    target.y = 90 + Math.floor(index / 5) * 70;
+                    target.vx = 0;
+                    target.vy = 0;
+                }
+            });
+
+            const hits = arcade.shooterTargets.filter(t => t.hit).length;
+            arcade.bonus = Math.min(arcade.mode.maxBonus, Math.floor(hits / 2) + Math.max(0, arcade.playerLives - 1));
+            ui.arcadeScore.textContent = `${hits} down | Hull ${arcade.playerLives}`;
+            ui.arcadeBonus.textContent = `${arcade.bonus}`;
+            drawExplosions();
+
+            if (hits === arcade.shooterTargets.length) {
+                arcade.bonus = arcade.mode.maxBonus;
+                finishArcade();
+            }
+        }
+
+        function drawDodge(elapsed) {
+            if (Math.floor(elapsed / 320) !== Math.floor((elapsed - 16) / 320)) {
+                arcade.asteroids.push({
+                    x: Math.random() * (canvas.width - 60) + 30,
+                    y: -20,
+                    r: Math.random() * 14 + 12,
+                    speed: Math.random() * 2.4 + 2.3
+                });
+            }
+
+            if (Math.floor(elapsed / 760) !== Math.floor((elapsed - 16) / 760)) {
+                arcade.enemyRaiders.push({
+                    x: Math.random() * (canvas.width - 100) + 50,
+                    y: -30,
+                    vx: Math.random() > 0.5 ? 2.4 : -2.4,
+                    vy: 1.9,
+                    hp: 1
+                });
+            }
+
+            if (elapsed - arcade.lastEnemyShotAt > 520 && arcade.enemyRaiders.length) {
+                const shooter = arcade.enemyRaiders[Math.floor(Math.random() * arcade.enemyRaiders.length)];
+                arcade.enemyBullets.push({ x: shooter.x, y: shooter.y + 10, vy: 5.2, mode: 'dodge' });
+                arcade.lastEnemyShotAt = elapsed;
+            }
+
+            if (arcade.keys.ArrowLeft) arcade.shipX -= 6;
+            if (arcade.keys.ArrowRight) arcade.shipX += 6;
+            arcade.shipX = Math.max(30, Math.min(canvas.width - 30, arcade.shipX));
+
+            const shipY = 360;
+            const shipHitbox = { left: arcade.shipX - 18, right: arcade.shipX + 18, top: 348, bottom: 378 };
+            const invulnerable = elapsed < arcade.dodgeInvulnerableUntil;
+
+            drawPlayerShip(arcade.shipX, shipY, invulnerable && Math.floor(elapsed / 120) % 2 === 0 ? '#f97316' : '#22d3ee');
+
+            arcade.asteroids.forEach((rock) => {
+                rock.y += rock.speed;
+                ctx.strokeStyle = '#f8fafc';
+                ctx.beginPath();
+                ctx.arc(rock.x, rock.y, rock.r, 0, Math.PI * 2);
+                ctx.stroke();
+            });
+
+            arcade.enemyRaiders.forEach((raider) => {
+                raider.x += raider.vx;
+                raider.y += raider.vy;
+                if (raider.x <= 30 || raider.x >= canvas.width - 30) raider.vx *= -1;
+                drawEnemyShip(raider.x, raider.y, '#f97316');
+            });
+
+            arcade.shooterBullets.forEach((bullet) => {
+                bullet.y += bullet.vy;
+            });
+            arcade.shooterBullets = arcade.shooterBullets.filter((bullet) => bullet.y > -20);
+            arcade.shooterBullets.forEach((bullet) => {
+                ctx.fillStyle = '#f8fafc';
+                ctx.fillRect(bullet.x - 2, bullet.y - 8, 4, 10);
+            });
+
+            arcade.enemyBullets.forEach((shot) => {
+                shot.y += shot.vy;
+                ctx.fillStyle = '#ef4444';
+                ctx.fillRect(shot.x - 2, shot.y, 4, 10);
+            });
+
+            arcade.asteroids = arcade.asteroids.filter((rock) => rock.y - rock.r < canvas.height + 30);
+            arcade.enemyRaiders = arcade.enemyRaiders.filter((raider) => raider.y < canvas.height + 40);
+            arcade.enemyBullets = arcade.enemyBullets.filter((shot) => shot.y < canvas.height + 20);
+
+            arcade.shooterBullets.forEach((bullet) => {
+                arcade.enemyRaiders.forEach((raider) => {
+                    if (raider.hp <= 0) return;
+                    const hitX = bullet.x >= raider.x - 16 && bullet.x <= raider.x + 16;
+                    const hitY = bullet.y >= raider.y - 10 && bullet.y <= raider.y + 12;
+                    if (hitX && hitY) {
+                        raider.hp = 0;
+                        bullet.y = -100;
+                        addExplosion(raider.x, raider.y, '#22d3ee');
+                    }
+                });
+                arcade.asteroids.forEach((rock) => {
+                    if (rock.hit) return;
+                    if (Math.hypot(rock.x - bullet.x, rock.y - bullet.y) <= rock.r + 3) {
+                        rock.hit = true;
+                        bullet.y = -100;
+                        addExplosion(rock.x, rock.y, '#f8fafc');
+                    }
+                });
+            });
+            arcade.enemyRaiders = arcade.enemyRaiders.filter((raider) => raider.hp > 0 && raider.y < canvas.height + 40);
+            arcade.asteroids = arcade.asteroids.filter((rock) => !rock.hit && rock.y - rock.r < canvas.height + 30);
+
+            if (!invulnerable) {
+                const asteroidHit = arcade.asteroids.some((rock) => {
+                    const closestX = Math.max(shipHitbox.left, Math.min(rock.x, shipHitbox.right));
+                    const closestY = Math.max(shipHitbox.top, Math.min(rock.y, shipHitbox.bottom));
+                    return Math.hypot(rock.x - closestX, rock.y - closestY) <= rock.r;
+                });
+
+                const shotHit = arcade.enemyBullets.some((shot) =>
+                    shot.x >= shipHitbox.left && shot.x <= shipHitbox.right && shot.y >= shipHitbox.top && shot.y <= shipHitbox.bottom
+                );
+
+                const raiderHit = arcade.enemyRaiders.some((raider) =>
+                    raider.x + 14 >= shipHitbox.left && raider.x - 14 <= shipHitbox.right && raider.y + 10 >= shipHitbox.top && raider.y - 8 <= shipHitbox.bottom
+                );
+
+                if (asteroidHit || shotHit || raiderHit) {
+                    arcade.dodgeLives -= 1;
+                    arcade.dodgeInvulnerableUntil = elapsed + 900;
+                    arcade.asteroids = [];
+                    arcade.enemyBullets = [];
+                    addExplosion(arcade.shipX, 356, '#ef4444');
+                    if (arcade.dodgeLives <= 0 && !arcade.dodgeEnded) {
+                        arcade.dodgeEnded = true;
+                        finishArcade();
+                        return;
+                    }
+                }
+            }
+
+            const survived = Math.floor(elapsed / 1000);
+            const clears = arcade.explosions.length;
+            arcade.bonus = Math.min(arcade.mode.maxBonus, (survived / 2) + Math.max(0, arcade.dodgeLives - 1));
+            ui.arcadeScore.textContent = `Hull ${arcade.dodgeLives} | Wave ${survived}s`;
+            ui.arcadeBonus.textContent = `${arcade.bonus.toFixed(1)}`;
+            drawExplosions();
+        }
+
+        function finishArcade() {
+            arcade.running = false;
+            cancelAnimationFrame(arcade.raf);
+            const paragraphIndex = Math.max(0, state.currentStep > 0 ? state.steps[state.currentStep - 1]?.paragraph ?? 0 : 0);
+            const roundedBonus = Math.round(arcade.bonus);
+            addScore(roundedBonus, 'Retro Intermission', `Intermission complete. Bonus applied: +${roundedBonus}.`);
+            if (state.paragraphs[paragraphIndex]) {
+                state.paragraphs[paragraphIndex].intermissionBonus += roundedBonus;
+            }
+            const nextWritingStep = state.steps.slice(state.currentStep + 1).find((step) => step.type !== 'arcade');
+            state.unlockedHint = roundedBonus >= 3 && nextWritingStep ? buildHintForStep(nextWritingStep) : '';
+            state.currentStep += 1;
+            advanceStep();
+        }
+
+        function buildHintForStep(step) {
+            const para = step.paragraph !== undefined ? state.prompt.paragraphs[step.paragraph] : null;
+            if (step.type === 'claim') {
+                return 'Look for a claim that qualifies the issue, points toward a larger principle, and gives both body paragraphs distinct work to do.';
+            }
+            if (step.type === 'topic') {
+                return `A strong topic sentence for ${para.title.toLowerCase()} should make one specific reason the claim is true, not just restate the prompt.`;
+            }
+            if (step.type === 'evidence') {
+                return 'Pick the evidence that is concrete, directly relevant, and rich enough to support real commentary instead of summary.';
+            }
+            if (step.type === 'commentary1') {
+                return 'Choose the commentary that explains how the evidence proves the paragraph point, rather than repeating what happened in the example.';
+            }
+            if (step.type === 'commentary2') {
+                return 'The second commentary move should widen the implication or sharpen the logic, not just reword the first commentary sentence.';
+            }
+            if (step.type === 'closing') {
+                return 'A strong closing move should sound like the paragraph has proven a meaningful idea and connected back to the larger claim.';
+            }
+            return 'Look for the option that is precise, arguable, and connected to the paragraph’s larger logic.';
+        }
+
+        function handleArcadeFire() {
+            if (!arcade.running) return;
+            if (arcade.mode.id !== 'shooter' && arcade.mode.id !== 'dodge') return;
+            const elapsed = performance.now() - arcade.startTime;
+            const cadence = arcade.mode.id === 'shooter' ? 220 : 180;
+            if (elapsed - arcade.lastShotAt < cadence) return;
+            arcade.shooterBullets.push({ x: arcade.shipX, y: 336, vy: arcade.mode.id === 'shooter' ? -8.5 : -9.5 });
+            arcade.lastShotAt = elapsed;
+        }
+
+        function renderParagraph(paragraph, promptTitle, index) {
+            return `
+                <p><span class="text-cyan-400">PARAGRAPH ${index + 1} CLAIM:</span> <br>${paragraph.topic.text}</p>
+                <p><span class="text-purple-400">EVIDENCE:</span> <br>${paragraph.evidence.text}</p>
+                <p><span class="text-white">COMMENTARY MOVE 1:</span> <br>${paragraph.commentary1.text}</p>
+                <p><span class="text-white">COMMENTARY MOVE 2:</span> <br>${paragraph.commentary2.text}</p>
+                <p><span class="text-green-400">CLOSING MOVE:</span> <br>${paragraph.closing.text}</p>
+            `;
+        }
+
+        function buildEssayText() {
+            const paragraphOne = state.paragraphs[0];
+            const paragraphTwo = state.paragraphs[1];
+            const paragraphOneText = `${paragraphOne.topic?.text || ''} ${paragraphOne.evidence?.text || ''} ${paragraphOne.commentary1?.text || ''} ${paragraphOne.commentary2?.text || ''} ${paragraphOne.closing?.text || ''}`.replace(/\s+/g, ' ').trim();
+            const paragraphTwoText = `${paragraphTwo.topic?.text || ''} ${paragraphTwo.evidence?.text || ''} ${paragraphTwo.commentary1?.text || ''} ${paragraphTwo.commentary2?.text || ''} ${paragraphTwo.closing?.text || ''}`.replace(/\s+/g, ' ').trim();
+            return [
+                `${state.claim?.text || ''}`,
+                '',
+                `${paragraphOneText}`,
+                '',
+                `${paragraphTwoText}`
+            ].join('\n');
+        }
+
+        function renderDebrief() {
+            const total = state.score;
+            renderLiveDraft(null);
+            ui.finalScore.textContent = `${total}`;
+            if (total >= 210) {
+                ui.finalRank.textContent = 'Architect Elite';
+                ui.scoreFeedback.textContent = 'You consistently chose sophisticated argumentative moves. The body paragraphs show strong control over claim, evidence, and commentary.';
+            } else if (total >= 170) {
+                ui.finalRank.textContent = 'Argument Pilot';
+                ui.scoreFeedback.textContent = 'This is a strong run. Your next step is making the commentary even more precise and choosing more nuanced options more consistently.';
+            } else {
+                ui.finalRank.textContent = 'Draft Cadet';
+                ui.scoreFeedback.textContent = 'You have a workable draft path, but several weaker choices kept the essay from sounding as sophisticated as it could.';
+            }
+            ui.paragraphOneOutput.innerHTML = renderParagraph(state.paragraphs[0], state.prompt.title, 0);
+            ui.paragraphTwoOutput.innerHTML = renderParagraph(state.paragraphs[1], state.prompt.title, 1);
+            ui.essayOutput.value = buildEssayText();
+            ui.breakdownOutput.innerHTML = state.breakdown.map(item => `<p><span class="text-cyan-300">${item.label}</span>: +${item.points} <span class="text-slate-500">- ${item.feedback}</span></p>`).join('');
+            updateHud();
+        }
+
+        function copyEssay() {
+            const text = buildEssayText();
+            const area = document.createElement('textarea');
+            area.value = text;
+            document.body.appendChild(area);
+            area.select();
+            document.execCommand('copy');
+            document.body.removeChild(area);
+            ui.toast.classList.remove('translate-y-4', 'opacity-0');
+            ui.toast.classList.add('translate-y-0', 'opacity-100');
+            setTimeout(() => {
+                ui.toast.classList.add('translate-y-4', 'opacity-0');
+                ui.toast.classList.remove('translate-y-0', 'opacity-100');
+            }, 2500);
+        }
+
+        ui.arcadeStartBtn.addEventListener('click', startArcade);
+        ui.choiceFeedbackContinue.addEventListener('click', continueFromChoiceFeedback);
+
+        window.addEventListener('keydown', (event) => {
+            arcade.keys[event.key] = true;
+            if (event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar') {
+                event.preventDefault();
+                handleArcadeFire();
+            }
+        });
+
+        window.addEventListener('keyup', (event) => {
+            arcade.keys[event.key] = false;
+        });
+
+        initStars();
+        renderPromptGrid();
+        updateHud();
+    </script>
+</body>
+</html>
